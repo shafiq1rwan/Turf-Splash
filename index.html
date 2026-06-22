@@ -517,6 +517,11 @@ function readKeyboard() {
 }
 
 // ---- Touch controls (virtual joystick + buttons) ----
+// Show the on-screen controls immediately on touch devices (not only after a tap).
+const isTouchDevice =
+  ("ontouchstart" in window) ||
+  (navigator.maxTouchPoints || 0) > 0 ||
+  (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
 let touchActive = false;
 let joyPaint = false;
 const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0, r: 60 };
@@ -1023,7 +1028,7 @@ function drawInkMeter() {
 }
 
 function drawTouchUI() {
-  if (!touchActive) return;
+  if (!touchActive && !isTouchDevice) return;
   const ui = uiLayout();
   // joystick
   ctx.globalAlpha = 0.5;
