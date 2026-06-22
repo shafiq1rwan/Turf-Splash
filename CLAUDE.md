@@ -6,9 +6,11 @@ Guidance for working in this repository.
 
 A **single-file isometric paint-control arena game** (Splatoon-style territory
 prototype). The player paints floor tiles, an enemy AI paints in its own color,
-and whoever owns more tiles when the 60-second timer ends wins. Pure placeholder
-art (colored diamonds + capsules). Built to test whether the paint-control loop
-feels fun, and to be easy to expand.
+and whoever owns more tiles when the 60-second timer ends wins. Code-drawn iso
+tiles/HUD plus a generated **pixel-art character** (idle + walk animations,
+recolored per team). Built to test whether the paint-control loop feels fun, and
+to be easy to expand. Deployed as a PWA on GitHub Pages
+(https://shafiq1rwan.github.io/Turf-Splash/).
 
 ## Project layout
 
@@ -17,10 +19,17 @@ feels fun, and to be easy to expand.
 - `README.md` — player-facing run instructions, controls, and rules.
 - `CHARACTER.md` — art/asset plan: how to generate the character sprite via the
   GameLab Studio MCP, asset specs, prompts, credit budget, and integration steps.
-- `assets/` — generated sprites (created once art generation begins; PNGs only).
+- `assets/` — generated PNGs: `iso-hero.png` (still), `iso-hero-idle.png` /
+  `iso-hero-walk.png` (6×6, 32-frame, 64px spritesheets), `splat-decal.png`,
+  and PWA `icon-192.png` / `icon-512.png`.
+- `manifest.webmanifest` + `sw.js` — PWA manifest and service worker (offline app
+  shell + install). All paths are **relative** so it works under the
+  `/Turf-Splash/` Pages subpath. Bump `CACHE` in `sw.js` when shipping new assets.
 
 There is no package.json, bundler, framework, or server. Do not add one unless
-asked — zero-setup portability is a core goal.
+asked — zero-setup portability is a core goal. The repo is a git repo with
+`origin` on GitHub; pushing to `main` auto-rebuilds the Pages site. `.mcp.json`
+holds the GameLab API key and is gitignored — never commit it.
 
 ## Art / asset pipeline
 
@@ -31,15 +40,22 @@ Key constraints to respect when generating or wiring assets:
 - **Pixel art**, small + low-color (≤64×64, ≤12-color palette, transparent PNG,
   no baked shadow). The MCP crashes/corrupts on heavy sprites — keep them light
   and generate **one sprite per call** (no sheets).
-- **Generate once, recolor in code.** Characters use a neutral body + one accent
-  zone; the two teams (`#38e0c8` / `#ff9f43`) come from a code palette swap, not
-  separate generations. Credit budget is tight — don't generate per-team or
-  per-direction.
+- **Generate once, recolor in code.** One neutral sprite → both teams (`#38e0c8`
+  / `#ff9f43`) via `tintSprite()` (offscreen canvas, `source-atop` overlay). The
+  character is tinted at `TEAM_TINT` (~0.42, keeps detail); the splat decal is
+  tinted at full alpha. Credit budget is tight — don't generate per-team or
+  per-direction. Left/right facing is a free **horizontal flip** (`ch.faceLeft`),
+  not extra sprites.
+- **Animations** were made via the MCP pipeline `generate_image → generate_video
+  → generate_spritesheet`, then the huge (8640²) sheet was **downscaled to a
+  384×384 / 64px-frame sheet** with PowerShell `System.Drawing`. Frames play by
+  indexing `gameClock * ANIM_FPS`. A video is ~3 credits, a spritesheet ~1.
 - **MCP tools load on Claude Code restart.** If the server was just added, reload
   the window before its tools are callable (`claude mcp list` to verify health).
-- When drawing sprites on canvas, set `ctx.imageSmoothingEnabled = false` (after
-  each `resize()`) and keep a placeholder-shape fallback so the game runs even if
-  a sprite is missing.
+- Sprites are **foot-anchored** (measured feet row within the frame, not the
+  frame edge) so they stand on tiles instead of floating. `ctx.imageSmoothingEnabled
+  = false` after each `resize()`; every sprite path has a fallback (anim → still
+  sprite → placeholder capsule) so the game runs even if a PNG is missing.
 
 ## How to run / verify
 
@@ -59,7 +75,10 @@ resize / use touch for mobile).
 - **Config:** `STATS` (shared by player + enemy — they are mechanically
   identical), `GRID_W`/`GRID_H`, `TILE_W`/`TILE_H` (64×32, 2:1 iso), `MATCH_TIME`,
   `COLORS`, `OWNER` enum.
-- **Iso helpers:** `worldToScreen(col,row)`, `tileOwnerAt(col,row)`.
+- **Iso helpers:** `worldToScreen(col,row)` returns **arena-local** coords;
+  `render()` applies `offX`/`offY` + `viewScale` (zoom-to-fit) via a canvas
+  transform. `tileOwnerAt(col,row)`. `resize()` computes `viewScale` so the whole
+  diamond fits the viewport (fixes mobile cut-off).
 - **State:** `tiles[row][col]` (owner per tile), `player`/`enemy` (from
   `makeCharacter`), `projectiles`, `splats`, and a `state` machine
   (`menu → countdown → playing → paused → ended`).
@@ -68,9 +87,12 @@ resize / use touch for mobile).
   (dumb wander + retreat-to-recharge), `updateProjectiles` (arc + landing splat).
 - **Audio:** WebAudio, no files — `playShoot`, `playSplat`, `playBeep`,
   `playTone` + `playWin`/`playLose`/`playDraw`. Unlocked on the Start click.
-- **Render:** `render()` draws tiles back-to-front, splats, depth-sorted
-  entities (inside a screen-shake transform), then HUD / edge-pulse / countdown /
-  touch UI. Game loop is `frame()` (delta-timed `requestAnimationFrame`).
+- **Render:** `render()` draws the world inside one transform (`offX/offY` +
+  screen-shake + `viewScale` zoom): tiles back-to-front, splats, depth-sorted
+  entities, then HUD / edge-pulse / countdown / touch UI in **screen space**
+  (unscaled). `drawCharacter` picks walk vs idle sheet by `ch.walkTimer`, tints
+  per team, foot-anchors, and h-flips by `ch.faceLeft`. Game loop is `frame()`
+  (delta-timed `requestAnimationFrame`).
 - **Input:** keyboard map + a shared `inputDir` vector; touch joystick + on-screen
   paint/dash buttons drawn on canvas. Both platforms feed the same pipeline.
 
@@ -124,5 +146,7 @@ Other tuning, outside `STATS`:
 
 ## Deliberately out of scope (per the prototype brief)
 
-No hero abilities, character selection, health/combat, final art, multiple
-maps, or balancing. It's a feel test for the core paint-control loop.
+No hero abilities, character selection, health/combat, multiple maps,
+directional (4/8-way) sprite sets, or balancing. It's a feel test for the core
+paint-control loop. (Basic pixel-art character + idle/walk animations now exist;
+full polished art is still out of scope.)
