@@ -673,7 +673,7 @@ function updateProjectiles(dt) {
       // landing burst effect + splash sound
       splats.push({ col: lc, row: lr, owner: p.owner, t: 0, dur: 0.5, r: STATS.splatRadius });
       playSplat(p.owner === OWNER.PLAYER ? 0.14 : 0.07);
-      shakeAmt = Math.min(9, shakeAmt + (p.owner === OWNER.PLAYER ? 4.5 : 1.8));
+      shakeAmt = Math.min(3.5, shakeAmt + (p.owner === OWNER.PLAYER ? 1.6 : 0.7));
       projectiles.splice(i, 1);
     }
   }
@@ -727,7 +727,7 @@ function update(dt) {
 
   // juice decay
   if (goFlash > 0) goFlash -= dt;
-  if (shakeAmt > 0) shakeAmt = Math.max(0, shakeAmt - dt * 28);
+  if (shakeAmt > 0) shakeAmt = Math.max(0, shakeAmt - dt * 40);
 
   timeLeft -= dt;
 
