@@ -8,6 +8,42 @@ wiring it into the game. Built around two hard constraints:
 2. **MCP crashes on heavy sprites.** Keep every sprite small, low-color, and
    one-per-call. No sprite sheets, no large canvases.
 
+## Direction (current): Neon Skate Park / Graffiti
+
+The game's art theme is a **graffiti / neon skate-park ink war** (Splatoon-
+inspired, but original — not Inkling IP). Matte concrete arena with faded lane
+lines and neon wall tags; painted tiles read as **wet, glossy spray-paint**.
+
+**Character — chibi street tagger.** Readable at 128px, neutral so it recolors
+per team via `tintSprite()`:
+
+- Hoodie up (or beanie + headphones), baggy pants, chunky high-tops, fingerless
+  gloves; slightly oversized chibi head so the face reads at low res.
+- **Neutral grey base + one flat accent zone** (hoodie body / spray-can holster)
+  that swaps to team teal `#38e0c8` / orange `#ff9f43`. Keep skin + shoes neutral
+  so only the "crew color" changes.
+- One free hand to hold the **weapon overlay** (see system below). Keep the white
+  nose-dot for aim. Round/symmetric enough to keep the free horizontal-flip — no
+  per-direction frames.
+
+### Character + Weapon system (decoupled — keeps the asset count linear)
+
+The roster goal: **unlock multiple characters, equip any weapon on any of them.**
+The trap is generating `characters × weapons × teams` sprites (credit blowup +
+MCP crashes). Avoid it by **never baking the weapon into the body**:
+
+- **Characters** = body sprite sets (idle/walk), one neutral PNG each, tinted per
+  team. *N characters → N assets.*
+- **Weapons** = tiny standalone overlay sprites (roller, blaster, splat-gun,
+  bucket), drawn over the hand each frame. *M weapons → M assets.*
+- Total = **N + M**, not N × M. A weapon is mechanically just a named bundle of
+  the existing `STATS` knobs (`paintRange`, `projectileSpeed`, `paintCooldown`,
+  `splatRadius`, `inkPerShot`) + its overlay sprite. Character stays mostly
+  cosmetic (skin + optional small modifier like move speed); **weapon carries the
+  moveset.** Wiring: `STATS` → `WEAPONS[id]`, character gets a `weaponId`,
+  `drawCharacter` adds one overlay-sprite draw. (Still out of scope in the brief
+  — this is the planned next phase, not yet built.)
+
 ## MCP connection
 
 - Server: `gamelab-studio` (SSE) — `http://api.gamelabstudio.co:8765/sse`
@@ -33,16 +69,26 @@ facings and burn credits.
 
 ## Asset specs (keep the MCP happy)
 
-| # | Asset | Generate at | Canvas | Palette | Priority |
+| # | Asset | Content size | Canvas | Palette | Priority |
 |---|-------|-------------|--------|---------|----------|
-| 1 | Blob bot (neutral, recolor-ready) | 32×48 | 64×64 transparent | ≤12 colors | **Must** |
-| 2 | Paint splat decal (greyscale) | 32×32 | 32×32 transparent | ≤6 greys | Nice |
-| 3 | Weapon icon (silhouette) | 32×32 | 32×32 transparent | ≤6 colors | Optional |
+| 1 | Street-tagger (neutral, recolor-ready) | ~64×96 | 128×128 transparent | ≤12 colors | **Must** |
+| 2 | Paint splat decal (greyscale) | ~64×64 | 128×128 transparent | ≤6 greys | Nice |
+| 3 | Weapon overlay (roller/blaster/etc.) | ~48×48 | 64×64 transparent | ≤6 colors | Next phase |
+
+Resolution note: assets are now **128×128** (up from 64×64). On-screen size is
+**unchanged** — sprites scale to a target height in `drawCharacter`, so 128px
+just buys more detail (hoodie, spray-can, distinct weapon shapes), not a bigger
+character. Generation is unaffected: the MCP still generates large then
+**downscales** — sheets land at **768×768** (32 frames × 128px) instead of
+384×384. Re-measure the foot-anchor constants (`ANIM_FOOT_Y`, `ANIM_CX`,
+`ANIM_H`) and set `FRAME_W`/`FRAME_H` to 128 against the *actual* downscaled
+sheet — don't blindly double, the feet row depends on the art's padding.
 
 Rules for every generation:
 - **Transparent PNG**, **no baked shadow** (the game draws its own).
 - **One sprite per call** — never request a sheet or multiple frames.
-- **≤ 64×64** source resolution.
+- **≤ 128×128** source resolution (keep content within it; the MCP still hates
+  heavy/busy sprites, so stay low-color and clean even at the larger canvas).
 - Keep the recolorable accent a **single flat color region** so a code palette
   swap is clean.
 
@@ -51,20 +97,26 @@ Everything else (tiles, HUD, ink meter, buttons, splash effects) stays
 
 ## Generation prompts (ready to paste)
 
-**1 — Blob bot (the essential one):**
-> simple pixel art robot shaped like a rounded paint droplet, front view,
-> neutral light-grey metallic body, one flat mid-grey accent panel on the belly,
-> two black dot eyes, small paint nozzle, stubby legs, 32x48 pixels, limited
-> 12-color palette, clean readable silhouette, transparent background, no shadow,
-> no text
+**1 — Street tagger (the essential one):**
+> simple pixel art chibi street graffiti kid, front view, big head small body,
+> grey hoodie pulled up over the head, baggy grey pants, chunky high-top
+> sneakers, fingerless gloves, one flat mid-grey accent panel on the hoodie
+> front, two black dot eyes, one free hand at the side, 64x96 pixels on a
+> 128x128 canvas, limited 12-color palette, clean readable silhouette,
+> transparent background, no shadow, no text, no weapon
 
 **2 — Paint splat decal (optional):**
 > simple pixel art paint splat blob, top-down, solid white shape with a few
 > droplets, 32x32 pixels, greyscale only, transparent background, no shadow
 
-**3 — Weapon icon (only if weapons added):**
-> simple pixel art paint blaster icon, side silhouette, flat grey, 32x32 pixels,
-> 6-color palette, transparent background, no shadow
+**3 — Weapon overlay (next-phase, one per weapon type):**
+> simple pixel art paint roller held sideways, flat grey with a colored handle,
+> 48x48 pixels on a 64x64 canvas, 6-color palette, clean silhouette, transparent
+> background, no shadow, no text
+
+> Repeat per weapon (blaster, splat-gun, bucket), swapping the noun. Anchor each
+> overlay to the character's free hand in `drawCharacter`; recolor the handle per
+> team in code.
 
 > Tighter prompt = fewer crashes/retries = fewer wasted credits. If a result
 > comes back wrong, refine the prompt before regenerating.
@@ -73,9 +125,10 @@ Everything else (tiles, HUD, ink meter, buttons, splash effects) stays
 
 | Spend | Item | Notes |
 |-------|------|-------|
-| 1 gen | Blob bot | covers **both** teams via recolor |
+| 1 gen | Street tagger (+ idle/walk video → sheet) | covers **both** teams via recolor |
 | 1 gen | Splat decal | optional polish |
-| 1 gen | Weapon icon | only with the weapon system |
+| 1 gen each | Weapon overlays | next phase; one per weapon type, recolor handle in code |
+| 1 gen each | Extra characters | roster; one neutral PNG each, any weapon equips |
 | rest  | **retry buffer** | crashes happen — keep headroom |
 
 Do **not** generate: per-team copies, per-direction frames, or sprite sheets.
@@ -114,9 +167,23 @@ image to `generate_image`. Final assets in `assets/`:
 Left/right facing is a code horizontal-flip; no directional sprites generated.
 Weapon icon was not made. See `CLAUDE.md` for how sprites are wired/recolored.
 
+These were the **placeholder** assets (64px chibi). The next pass replaces them
+with the **graffiti street-tagger at 128px** (see "Direction" above) and adds the
+weapon-overlay system.
+
 ## Checklist
+
+Done (placeholder pass, 64px):
 
 - [x] Generate the character (reference-image chibi) → `assets/iso-hero.png`
 - [x] Add sprite-loading + recolor layer to `index.html` (placeholder fallback)
 - [x] Generate splat decal; add idle + walk animations
 - [x] Verify in browser on PC + mobile; confirm both team colors read clearly
+
+Next (graffiti pass, 128px):
+
+- [ ] Generate the street-tagger still → `assets/iso-hero.png` (replace), 128px
+- [ ] idle/walk video → spritesheet → downscale to 768×768 / 128px frames
+- [ ] Set `FRAME_W`/`FRAME_H` = 128; **re-measure** `ANIM_FOOT_Y`/`ANIM_CX`/`ANIM_H`
+- [ ] Bump `CACHE` in `sw.js` so clients pick up the new art
+- [ ] (Next phase) weapon overlays + `WEAPONS` data model + extra characters
