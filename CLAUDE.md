@@ -76,15 +76,26 @@ resize / use touch for mobile).
   identical), `GRID_W`/`GRID_H`, `TILE_W`/`TILE_H` (64×32, 2:1 iso), `MATCH_TIME`,
   `COLORS`, `OWNER` enum.
 - **Iso helpers:** `worldToScreen(col,row)` returns **arena-local** coords;
-  `render()` applies `offX`/`offY` + `viewScale` (zoom-to-fit) via a canvas
-  transform. `tileOwnerAt(col,row)`. `resize()` computes `viewScale` so the whole
-  diamond fits the viewport (fixes mobile cut-off).
-- **State:** `tiles[row][col]` (owner per tile), `player`/`enemy` (from
-  `makeCharacter`), `projectiles`, `splats`, and a `state` machine
-  (`menu → countdown → playing → paused → ended`).
-- **Core systems:** `moveCharacter` (8-dir, enemy-paint slow), `firePaint`
-  (ink-gated arcing projectile), `paintAround`, `rechargeInk`, `updateEnemyAI`
-  (dumb wander + retreat-to-recharge), `updateProjectiles` (arc + landing splat).
+  `render()` applies `offX`/`offY` + `viewScale` via a canvas transform.
+  `tileOwnerAt(col,row)`. **Camera:** `resize()` sets `viewScale` to a zoomed-in
+  level (targets ~`CAM_VISIBLE_X`/`CAM_VISIBLE_Y` tiles across, clamped by
+  `CAM_ZOOM_MIN/MAX`); `updateCamera(dt, snap)` smoothly centers `offX`/`offY` on
+  the player each frame (`CAM_LERP`), clamped to the arena + `CAM_MARGIN` overscroll.
+- **State:** `tiles[row][col]` (owner per tile), `blocked[row][col]` (obstacle:
+  impassable but **paintable cover**), `spawnPlayer`/`spawnEnemy` (home pads),
+  `player`/`enemy` (from `makeCharacter`), `projectiles`, `splats`, and a `state`
+  machine (`menu → countdown → playing → paused → ended`).
+- **Obstacles:** `buildObstacles(pStart,eStart)` fills `blocked` with a
+  **randomized point-symmetric** layout each match (scattered, non-adjacent so
+  the arena never traps/bisects; kept clear of spawns — tune `OBSTACLE_COUNT_*`
+  / `OBSTACLE_SPAWN_CLEAR`). Walls are **paintable cover** (Splatoon-style): they
+  block movement (`isBlocked` + per-axis slide in `moveCharacter`) and stop shots,
+  but a shot that hits one **paints it** and it counts as turf. Drawn as code-built
+  iso cubes (`drawObstacle`) tinted to the owning team, depth-sorted with chars.
+- **Core systems:** `moveCharacter` (8-dir, enemy-paint slow, obstacle slide),
+  `firePaint` (ink-gated arcing projectile), `paintAround`, `rechargeInk`,
+  `updateEnemyAI` (dumb wander + retreat-to-recharge), `updateProjectiles`
+  (arc + landing splat).
 - **Audio:** WebAudio, no files — `playShoot`, `playSplat`, `playBeep`,
   `playTone` + `playWin`/`playLose`/`playDraw`. Unlocked on the Start click.
 - **Render:** `render()` draws the world inside one transform (`offX/offY` +
@@ -134,6 +145,12 @@ change game feel — no other code changes needed.
 Other tuning, outside `STATS`:
 
 - **Arena size:** `GRID_W` / `GRID_H`. **Tile size:** `TILE_W` / `TILE_H` (keep 2:1).
+- **Camera:** `CAM_VISIBLE_X`/`CAM_VISIBLE_Y` (lower = more zoomed in),
+  `CAM_ZOOM_MIN`/`CAM_ZOOM_MAX` (clamp), `CAM_LERP` (follow snappiness),
+  `CAM_MARGIN` (how far past the arena edge the camera may scroll).
+- **Obstacles:** `OBSTACLE_COUNT_MIN`/`MAX` (how many blocks; each is mirrored),
+  `OBSTACLE_SPAWN_CLEAR` (clearance around spawns), `OBSTACLE_H` (cube height px),
+  `OBSTACLE_FACES` (per-team cube colors).
 - **Match length:** `MATCH_TIME` (and the under-10s/under-5s pulse thresholds in
   `drawEdgePulse`).
 - **Countdown length:** `countdown = 3.99` in `startMatch`.

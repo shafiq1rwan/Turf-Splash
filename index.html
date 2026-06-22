@@ -118,9 +118,19 @@
 // ----------------------------------------------------------------------------
 // CONFIG / STATS
 // ----------------------------------------------------------------------------
-const GRID_W = 14, GRID_H = 14;
+const GRID_W = 18, GRID_H = 18;
 const TILE_W = 64, TILE_H = 32;            // 2:1 isometric diamond
 const MATCH_TIME = 60;                      // seconds
+
+// Camera: zoom in on the player and follow them (instead of fitting the whole
+// arena). CAM_VISIBLE_* = how many tiles roughly fit across the view (smaller =
+// more zoomed in). Clamp keeps it sane across phones/desktops. CAM_LERP = how
+// snappily the camera chases the player; CAM_MARGIN = how far past the arena
+// edge the camera may scroll (px, arena-local).
+const CAM_VISIBLE_X = 11, CAM_VISIBLE_Y = 13;
+const CAM_ZOOM_MIN = 0.7, CAM_ZOOM_MAX = 1.5;
+const CAM_LERP = 6;
+const CAM_MARGIN = 64;
 
 // Shared stats — player and enemy are mechanically identical.
 const STATS = {
@@ -162,7 +172,8 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 let viewW = 0, viewH = 0, dpr = 1;
 let offX = 0, offY = 0;   // on-screen anchor for the arena origin
-let viewScale = 1;        // zoom so the whole arena fits the viewport (esp. mobile)
+let viewScale = 1;        // zoom level (follow-cam); set in resize()
+let player = null, enemy = null;   // declared early so the follow-cam can read them in resize()
 
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -175,16 +186,49 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;   // crisp pixel-art sprites
 
-  // Fit the whole iso diamond into the viewport, leaving room for HUD + touch UI.
-  const arenaW = (GRID_W + GRID_H - 2) * (TILE_W / 2) + TILE_W;        // full diamond width
-  const arenaH = (GRID_W + GRID_H - 2) * (TILE_H / 2) + TILE_H + 70;   // + character headroom
-  const padX = 16, padTop = 70, padBottom = 60;
-  viewScale = Math.min(1, (viewW - padX * 2) / arenaW, (viewH - padTop - padBottom) / arenaH);
-  viewScale = Math.max(0.25, viewScale);
-  // worldToScreen now returns arena-local coords; render() applies offX/offY + viewScale.
-  offX = viewW / 2;
-  const midLocalY = (GRID_W + GRID_H - 2) * (TILE_H / 2) / 2;          // vertical mid of tile span
-  offY = viewH / 2 - midLocalY * viewScale;
+  // Zoom in so the character reads clearly; the camera follows the player rather
+  // than fitting the whole arena. viewScale targets ~CAM_VISIBLE_* tiles across.
+  const sX = viewW / (CAM_VISIBLE_X * TILE_W);
+  const sY = viewH / (CAM_VISIBLE_Y * TILE_H);
+  viewScale = Math.max(CAM_ZOOM_MIN, Math.min(CAM_ZOOM_MAX, Math.min(sX, sY)));
+
+  // worldToScreen returns arena-local coords; render() applies offX/offY + viewScale.
+  if (player) {
+    updateCamera(0, true);          // snap to the player at the new zoom
+  } else {
+    // Before a match exists (menu), center the arena as a fallback.
+    offX = viewW / 2;
+    const midLocalY = (GRID_W + GRID_H - 2) * (TILE_H / 2) / 2;
+    offY = viewH / 2 - midLocalY * viewScale;
+  }
+}
+
+// Smoothly center the camera on the player, clamped so it doesn't scroll far
+// past the arena edges. snap=true jumps instantly (match start / resize).
+function updateCamera(dt, snap) {
+  if (!player) return;
+  const pl = worldToScreen(player.col, player.row);
+  let tx = viewW / 2 - pl.x * viewScale;
+  let ty = viewH / 2 - pl.y * viewScale;
+
+  // Arena-local bounds of the tile span, plus a margin of overscroll.
+  const minLX = -(GRID_H - 1) * (TILE_W / 2) - CAM_MARGIN;
+  const maxLX =  (GRID_W - 1) * (TILE_W / 2) + CAM_MARGIN;
+  const minLY = -CAM_MARGIN;
+  const maxLY =  (GRID_W + GRID_H - 2) * (TILE_H / 2) + CAM_MARGIN;
+  tx = clampCam(tx, viewW - maxLX * viewScale, -minLX * viewScale);
+  ty = clampCam(ty, viewH - maxLY * viewScale, -minLY * viewScale);
+
+  if (snap) { offX = tx; offY = ty; return; }
+  const k = Math.min(1, dt * CAM_LERP);
+  offX += (tx - offX) * k;
+  offY += (ty - offY) * k;
+}
+
+// Clamp to [lo,hi]; if the content is smaller than the view (lo > hi), center it.
+function clampCam(v, lo, hi) {
+  if (lo > hi) return (lo + hi) / 2;
+  return Math.max(lo, Math.min(hi, v));
 }
 window.addEventListener("resize", resize);
 resize();
@@ -385,11 +429,60 @@ function tileOwnerAt(col, row) {
   return tiles[r][c];
 }
 
+// True if the cell at a continuous position is an obstacle (blocks move + ink).
+function isBlocked(col, row) {
+  const c = Math.round(col), r = Math.round(row);
+  if (c < 0 || c >= GRID_W || r < 0 || r >= GRID_H) return false;
+  return blocked[r][c];
+}
+
+// Randomized, point-symmetric obstacle layout (so neither team has an edge).
+// Each chosen cell is blocked with its 180°-rotated mirror. Blocks are kept
+// non-adjacent (no long walls / traps — the arena stays fully connected) and
+// clear of both spawns. Walls are paintable cover: they block movement + shots
+// but take ink and count as turf. Tune OBSTACLE_COUNT / spacing here.
+const OBSTACLE_COUNT_MIN = 5, OBSTACLE_COUNT_MAX = 8;   // distinct cells (each is mirrored → up to 2x)
+const OBSTACLE_SPAWN_CLEAR = 3.5;                       // keep this many tiles clear around spawns
+function buildObstacles(pStart, eStart) {
+  blocked = [];
+  for (let r = 0; r < GRID_H; r++) {
+    blocked[r] = [];
+    for (let c = 0; c < GRID_W; c++) blocked[r][c] = false;
+  }
+  const nearSpawn = (c, r) =>
+    Math.hypot(c - pStart.col, r - pStart.row) < OBSTACLE_SPAWN_CLEAR ||
+    Math.hypot(c - eStart.col, r - eStart.row) < OBSTACLE_SPAWN_CLEAR;
+  const hasNeighbor = (c, r) => {
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+      const nc = c + dc, nr = r + dr;
+      if (nc >= 0 && nc < GRID_W && nr >= 0 && nr < GRID_H && blocked[nr][nc]) return true;
+    }
+    return false;
+  };
+  const want = OBSTACLE_COUNT_MIN + Math.floor(Math.random() * (OBSTACLE_COUNT_MAX - OBSTACLE_COUNT_MIN + 1));
+  let placed = 0, tries = 0;
+  while (placed < want && tries < 300) {
+    tries++;
+    const c = 1 + Math.floor(Math.random() * (GRID_W - 2));
+    const r = 1 + Math.floor(Math.random() * (GRID_H - 2));
+    const mc = GRID_W - 1 - c, mr = GRID_H - 1 - r;
+    if (c === mc && r === mr) continue;                 // skip the exact center (no distinct mirror)
+    if (nearSpawn(c, r) || nearSpawn(mc, mr)) continue;
+    if (blocked[r][c] || blocked[mr][mc]) continue;
+    if (hasNeighbor(c, r) || hasNeighbor(mc, mr)) continue;   // keep blocks spread out
+    blocked[r][c] = true;
+    blocked[mr][mc] = true;
+    placed++;
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Game state
 // ----------------------------------------------------------------------------
 let tiles;          // tiles[row][col] = owner
-let player, enemy;
+let blocked;        // blocked[row][col] = obstacle (impassable, unpaintable)
+let spawnPlayer, spawnEnemy;   // {col,row} home pads
+// player/enemy are declared up in the canvas section (so resize()'s follow-cam can read them)
 let projectiles;
 let splats;         // short-lived landing burst effects
 let timeLeft;
@@ -425,9 +518,12 @@ function resetMatch() {
     tiles[r] = [];
     for (let c = 0; c < GRID_W; c++) tiles[r][c] = OWNER.NONE;
   }
-  player = makeCharacter(OWNER.PLAYER, 3, GRID_H - 3);
-  enemy  = makeCharacter(OWNER.ENEMY, GRID_W - 4, 2);
-  // Seed each side's start tile so it reads clearly.
+  spawnPlayer = { col: 3, row: GRID_H - 3 };
+  spawnEnemy  = { col: GRID_W - 4, row: 2 };
+  buildObstacles(spawnPlayer, spawnEnemy);
+  player = makeCharacter(OWNER.PLAYER, spawnPlayer.col, spawnPlayer.row);
+  enemy  = makeCharacter(OWNER.ENEMY, spawnEnemy.col, spawnEnemy.row);
+  // Seed each side's home pad so it reads clearly.
   paintAround(player.col, player.row, OWNER.PLAYER, 1.4);
   paintAround(enemy.col, enemy.row, OWNER.ENEMY, 1.4);
   projectiles = [];
@@ -450,7 +546,7 @@ function paintAround(col, row, owner, radius) {
   for (let r = minR; r <= maxR; r++) {
     for (let c = minC; c <= maxC; c++) {
       const dc = c - col, dr = r - row;
-      if (dc * dc + dr * dr <= r2) tiles[r][c] = owner;
+      if (dc * dc + dr * dr <= r2) tiles[r][c] = owner;   // walls are paintable too
     }
   }
 }
@@ -604,11 +700,12 @@ function moveCharacter(ch, dirx, diry, dt) {
       const o = tileOwnerAt(ch.col, ch.row);
       if (o !== OWNER.NONE && o !== ch.owner) speed *= STATS.enemyPaintSlow;
     }
-    ch.col += nx * speed * dt;
-    ch.row += ny * speed * dt;
-    // clamp to arena
-    ch.col = Math.max(0, Math.min(GRID_W - 1, ch.col));
-    ch.row = Math.max(0, Math.min(GRID_H - 1, ch.row));
+    const oldCol = ch.col, oldRow = ch.row;
+    const tryCol = Math.max(0, Math.min(GRID_W - 1, oldCol + nx * speed * dt));
+    const tryRow = Math.max(0, Math.min(GRID_H - 1, oldRow + ny * speed * dt));
+    // Resolve each axis against obstacles separately so we slide along walls.
+    if (!isBlocked(tryCol, oldRow)) ch.col = tryCol;
+    if (!isBlocked(ch.col, tryRow)) ch.row = tryRow;
   }
 }
 
@@ -636,6 +733,7 @@ function updateEnemyAI(dt) {
     for (let i = 0; i < 14; i++) {
       const c = Math.floor(Math.random() * GRID_W);
       const r = Math.floor(Math.random() * GRID_H);
+      if (blocked[r][c]) continue;        // never path to a wall cell
       const o = tiles[r][c];
       const d = Math.hypot(c - enemy.col, r - enemy.row);
       let score;
@@ -670,8 +768,10 @@ function updateProjectiles(dt) {
     p.row += p.vy * step;
     p.traveled += step;
     // The paint arcs through the air and only paints the floor when it lands.
+    // A wall stops the shot but still takes ink (paintable cover) — splat on it.
     const out = p.col < -1 || p.col > GRID_W || p.row < -1 || p.row > GRID_H;
-    if (p.traveled >= p.range || out) {
+    const hitWall = isBlocked(p.col, p.row);
+    if (p.traveled >= p.range || out || hitWall) {
       const lc = Math.max(0, Math.min(GRID_W - 1, p.col));
       const lr = Math.max(0, Math.min(GRID_H - 1, p.row));
       paintAround(lc, lr, p.owner, STATS.splatRadius);
@@ -701,7 +801,7 @@ function projectileHeight(p) {
 function countTiles() {
   let pc = 0, ec = 0, nc = 0;
   for (let r = 0; r < GRID_H; r++) for (let c = 0; c < GRID_W; c++) {
-    const o = tiles[r][c];
+    const o = tiles[r][c];               // walls are paintable cover, so they count
     if (o === OWNER.PLAYER) pc++;
     else if (o === OWNER.ENEMY) ec++;
     else nc++;
@@ -730,6 +830,8 @@ function update(dt) {
   updateSplats(dt);
   countTiles();
 
+  updateCamera(dt);   // follow the player
+
   // juice decay
   if (goFlash > 0) goFlash -= dt;
   if (shakeAmt > 0) shakeAmt = Math.max(0, shakeAmt - dt * 40);
@@ -747,6 +849,7 @@ function update(dt) {
 }
 
 function updateCountdown(dt) {
+  updateCamera(dt);   // keep the player centered during 3-2-1
   const prev = Math.ceil(countdown);
   countdown -= dt;
   const cur = Math.ceil(countdown);
@@ -777,6 +880,54 @@ function drawDiamond(cx, cy, owner) {
   ctx.strokeStyle = COLORS.grid;
   ctx.lineWidth = 1;
   ctx.stroke();
+}
+
+// Raised iso cube of paintable cover. Faces tint to the owning team (Splatoon-
+// style inked walls); neutral = concrete grey. Top face is lightest, sides darker.
+const OBSTACLE_H = 26;   // cube height in px (arena-local)
+const OBSTACLE_FACES = {
+  [OWNER.NONE]:   { top: "#717885", left: "#515764", right: "#3c414c" },
+  [OWNER.PLAYER]: { top: "#5cf0da", left: "#2bb6a3", right: "#1f8576" },
+  [OWNER.ENEMY]:  { top: "#ffb866", left: "#e0853a", right: "#b3641b" },
+};
+function drawObstacle(cx, cy, owner) {
+  const hw = TILE_W / 2, hh = TILE_H / 2, H = OBSTACLE_H;
+  const f = OBSTACLE_FACES[owner] || OBSTACLE_FACES[OWNER.NONE];
+  // left side face
+  ctx.fillStyle = f.left;
+  ctx.beginPath();
+  ctx.moveTo(cx - hw, cy); ctx.lineTo(cx, cy + hh);
+  ctx.lineTo(cx, cy + hh - H); ctx.lineTo(cx - hw, cy - H);
+  ctx.closePath(); ctx.fill();
+  // right side face
+  ctx.fillStyle = f.right;
+  ctx.beginPath();
+  ctx.moveTo(cx + hw, cy); ctx.lineTo(cx, cy + hh);
+  ctx.lineTo(cx, cy + hh - H); ctx.lineTo(cx + hw, cy - H);
+  ctx.closePath(); ctx.fill();
+  // top face
+  ctx.fillStyle = f.top;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - hh - H); ctx.lineTo(cx + hw, cy - H);
+  ctx.lineTo(cx, cy + hh - H); ctx.lineTo(cx - hw, cy - H);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = "#23262e"; ctx.lineWidth = 1; ctx.stroke();
+}
+
+// Team home pad: a pulsing diamond ring on the floor at the spawn tile.
+function drawSpawnPad(pad, color) {
+  if (!pad) return;
+  const s = worldToScreen(pad.col, pad.row);
+  const hw = TILE_W / 2 - 4, hh = TILE_H / 2 - 2;
+  const pulse = 0.55 + 0.45 * Math.sin(gameClock * 3);
+  ctx.save();
+  ctx.globalAlpha = 0.35 + pulse * 0.4;
+  ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(s.x, s.y - hh); ctx.lineTo(s.x + hw, s.y);
+  ctx.lineTo(s.x, s.y + hh); ctx.lineTo(s.x - hw, s.y);
+  ctx.closePath(); ctx.stroke();
+  ctx.restore();
 }
 
 function drawCharacter(ch) {
@@ -931,7 +1082,7 @@ function drawSplat(sp) {
 }
 
 function drawHUD() {
-  const total = GRID_W * GRID_H;
+  const total = Math.max(1, scores.player + scores.enemy + scores.none);   // paintable tiles only
   const pPct = scores.player / total;
   const ePct = scores.enemy / total;
   // top bar
@@ -1072,13 +1223,28 @@ function render() {
     }
   }
 
+  // home pads (floor decals, under everything else)
+  drawSpawnPad(spawnPlayer, COLORS.player);
+  drawSpawnPad(spawnEnemy, COLORS.enemy);
+
   // splash bursts sit on the floor, above the tiles
   for (const sp of splats) drawSplat(sp);
 
-  // entities sorted by depth (col+row)
-  const ents = [player, enemy].sort((a, b) => (a.col + a.row) - (b.col + b.row));
+  // Obstacles + characters share one depth-sorted pass (col+row) so walls
+  // correctly occlude/are occluded by the players.
+  const drawables = [{ kind: "ent", col: player.col, row: player.row, ref: player },
+                     { kind: "ent", col: enemy.col,  row: enemy.row,  ref: enemy }];
+  for (let r = 0; r < GRID_H; r++) for (let c = 0; c < GRID_W; c++) {
+    if (blocked[r][c]) drawables.push({ kind: "obs", col: c, row: r });
+  }
+  drawables.sort((a, b) => (a.col + a.row) - (b.col + b.row));
+  for (const d of drawables) {
+    if (d.kind === "obs") { const s = worldToScreen(d.col, d.row); drawObstacle(s.x, s.y, tiles[d.row][d.col]); }
+    else drawCharacter(d.ref);
+  }
+
+  // projectiles arc above everything
   for (const p of projectiles) drawProjectile(p);
-  for (const e of ents) drawCharacter(e);
 
   ctx.restore();
 
@@ -1174,6 +1340,7 @@ function startMatch() {
   initAudio();
   lockLandscape();
   resetMatch();
+  updateCamera(0, true);   // snap the follow-cam onto the player before countdown
   startScreen.classList.add("hidden");
   endScreen.classList.add("hidden");
   pauseScreen.classList.add("hidden");
