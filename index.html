@@ -4,6 +4,15 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Turf Splash — Prototype</title>
+<!-- PWA: installable + offline -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#1a1d24" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Turf Splash" />
+<link rel="apple-touch-icon" href="assets/icon-192.png" />
+<link rel="icon" type="image/png" href="assets/icon-192.png" />
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -152,7 +161,8 @@ const COLORS = {
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 let viewW = 0, viewH = 0, dpr = 1;
-let offX = 0, offY = 0;   // iso draw offset (centers the arena)
+let offX = 0, offY = 0;   // on-screen anchor for the arena origin
+let viewScale = 1;        // zoom so the whole arena fits the viewport (esp. mobile)
 
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -164,9 +174,17 @@ function resize() {
   canvas.style.height = viewH + "px";
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;   // crisp pixel-art sprites
-  // Center the diamond. Iso spans from col-row in [-(H-1)..(W-1)].
+
+  // Fit the whole iso diamond into the viewport, leaving room for HUD + touch UI.
+  const arenaW = (GRID_W + GRID_H - 2) * (TILE_W / 2) + TILE_W;        // full diamond width
+  const arenaH = (GRID_W + GRID_H - 2) * (TILE_H / 2) + TILE_H + 70;   // + character headroom
+  const padX = 16, padTop = 70, padBottom = 60;
+  viewScale = Math.min(1, (viewW - padX * 2) / arenaW, (viewH - padTop - padBottom) / arenaH);
+  viewScale = Math.max(0.25, viewScale);
+  // worldToScreen now returns arena-local coords; render() applies offX/offY + viewScale.
   offX = viewW / 2;
-  offY = viewH / 2 - ((GRID_W + GRID_H) * TILE_H) / 4 + TILE_H;
+  const midLocalY = (GRID_W + GRID_H - 2) * (TILE_H / 2) / 2;          // vertical mid of tile span
+  offY = viewH / 2 - midLocalY * viewScale;
 }
 window.addEventListener("resize", resize);
 resize();
@@ -353,9 +371,10 @@ function playSplat(vol) {
 // Iso helpers
 // ----------------------------------------------------------------------------
 function worldToScreen(col, row) {
+  // arena-local coords; render() translates by offX/offY and scales by viewScale
   return {
-    x: (col - row) * (TILE_W / 2) + offX,
-    y: (col + row) * (TILE_H / 2) + offY,
+    x: (col - row) * (TILE_W / 2),
+    y: (col + row) * (TILE_H / 2),
   };
 }
 
@@ -1032,11 +1051,13 @@ function render() {
   ctx.fillStyle = COLORS.bg;
   ctx.fillRect(0, 0, viewW, viewH);
 
-  // screen shake — translate the whole world (not the HUD)
+  // world transform: anchor at offX/offY, screen-shake (in px), then zoom-to-fit
   ctx.save();
+  ctx.translate(offX, offY);
   if (shakeAmt > 0.1) {
     ctx.translate((Math.random() * 2 - 1) * shakeAmt, (Math.random() * 2 - 1) * shakeAmt);
   }
+  ctx.scale(viewScale, viewScale);
 
   // tiles back-to-front
   for (let r = 0; r < GRID_H; r++) {
@@ -1201,6 +1222,15 @@ resetMatch();
 render();
 
 })();
+</script>
+
+<!-- PWA: register the service worker (offline + installable) -->
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
