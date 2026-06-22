@@ -1,4 +1,4 @@
-# Paint Arena — Isometric Paint-Control Prototype
+# Turf Splash — Isometric Paint-Control Prototype
 
 A tiny Splatoon-style territory game in a single file. Move around an isometric
 arena, spread paint, and own more floor tiles than the enemy AI before the

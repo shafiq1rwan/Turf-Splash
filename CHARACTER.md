@@ -1,4 +1,4 @@
-# Character Creation — Paint Arena
+# Character Creation — Turf Splash
 
 Plan for generating the game's character art via the **GameLab Studio MCP** and
 wiring it into the game. Built around two hard constraints:

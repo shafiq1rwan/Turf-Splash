@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>Paint Arena — Prototype</title>
+<title>Turf Splash — Prototype</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -29,6 +29,13 @@
   }
   .overlay.hidden { display: none; }
   .overlay h1 { font-size: clamp(28px, 8vw, 64px); letter-spacing: 1px; }
+  .tagline {
+    margin-top: -8px;
+    font-size: clamp(15px, 4vw, 24px) !important;
+    font-weight: 700; font-style: italic;
+    color: #38e0c8; opacity: 1 !important;
+    letter-spacing: 0.3px;
+  }
   .overlay p { font-size: clamp(14px, 3.5vw, 20px); opacity: 0.85; max-width: 90vw; line-height: 1.5; }
   .score-row { font-size: clamp(16px, 4vw, 26px); display: flex; gap: 28px; }
   .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
@@ -63,7 +70,8 @@
 
 <!-- Start screen -->
 <div id="startScreen" class="overlay">
-  <h1>PAINT ARENA</h1>
+  <h1>TURF SPLASH</h1>
+  <p class="tagline">Splash more turf than your rival before the timer runs out!</p>
   <p>Paint more floor than the enemy before the 60&nbsp;second timer runs out.<br>
      <b>PC:</b> WASD / Arrows to move &middot; Space to paint &middot; Shift to dash.<br>
      <b>Mobile:</b> left stick to move &middot; right buttons to paint / dash.</p>
@@ -251,7 +259,7 @@ let walkPlayer = null, walkEnemy = null;
 // Falls back to the code-drawn splat blob if missing.
 const SPLAT_SRC = "assets/splat-decal.png";
 let splatReady = false;
-let splatPlayer = null, splatEnemy = null;
+let splatPlayer = null, splatEnemy = null, splatFlash = null;
 let SPLAT_W = 32, SPLAT_H = 32;
 (() => {
   const img = new Image();
@@ -261,6 +269,7 @@ let SPLAT_W = 32, SPLAT_H = 32;
     // white shape -> solid team color (source-atop at full alpha keeps soft edges)
     splatPlayer = tintSprite(img, COLORS.player, 1);
     splatEnemy  = tintSprite(img, COLORS.enemy, 1);
+    splatFlash  = tintSprite(img, "#ffffff", 1);   // bright impact flash (any tile)
     splatReady = true;
   };
   img.onerror = () => { splatReady = false; };
@@ -643,7 +652,7 @@ function updateProjectiles(dt) {
       const lr = Math.max(0, Math.min(GRID_H - 1, p.row));
       paintAround(lc, lr, p.owner, STATS.splatRadius);
       // landing burst effect + splash sound
-      splats.push({ col: lc, row: lr, owner: p.owner, t: 0, dur: 0.35, r: STATS.splatRadius });
+      splats.push({ col: lc, row: lr, owner: p.owner, t: 0, dur: 0.5, r: STATS.splatRadius });
       playSplat(p.owner === OWNER.PLAYER ? 0.14 : 0.07);
       shakeAmt = Math.min(9, shakeAmt + (p.owner === OWNER.PLAYER ? 4.5 : 1.8));
       projectiles.splice(i, 1);
@@ -853,13 +862,20 @@ function drawSplat(sp) {
   const baseR = sp.r * (TILE_W / 2);
   ctx.save();
   // central paint blob that pops big then settles (scale punch)
-  const pop = 1.5 - t * 0.7;                 // starts ~1.5x, shrinks toward ~0.8x
+  const pop = 1.6 - t * 0.7;                 // starts ~1.6x, shrinks toward ~0.9x
   if (splatReady) {
     // organic decal sprite, squashed to the iso ground plane (2:1)
     const img = sp.owner === OWNER.PLAYER ? splatPlayer : splatEnemy;
-    const dw = baseR * 2.0 * pop, dh = dw * 0.5;
-    ctx.globalAlpha = (1 - t) * 0.85;
+    const dw = baseR * 2.2 * pop, dh = dw * 0.5;
+    ctx.globalAlpha = (1 - t) * 0.9;
     ctx.drawImage(img, s.x - dw / 2, s.y - dh / 2, dw, dh);
+    // bright white impact flash on top — pops on ANY tile color, fades fast
+    const flash = Math.max(0, 1 - t * 2.2);
+    if (flash > 0) {
+      ctx.globalAlpha = flash * 0.9;
+      const fw = baseR * 1.6 * pop, fh = fw * 0.5;
+      ctx.drawImage(splatFlash, s.x - fw / 2, s.y - fh / 2, fw, fh);
+    }
   } else {
     ctx.globalAlpha = (1 - t) * 0.55;
     ctx.fillStyle = color;
@@ -867,12 +883,13 @@ function drawSplat(sp) {
     ctx.ellipse(s.x, s.y, baseR * 0.55 * pop, baseR * 0.28 * pop, 0, 0, Math.PI * 2);
     ctx.fill();
   }
-  // expanding fading ring (the splash)
-  ctx.globalAlpha = (1 - t) * 0.9;
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 4 * (1 - t) + 1;
+  // expanding ring — white early (contrasts on same-color turf), tinting to team color
+  const ringFade = (1 - t);
+  ctx.globalAlpha = ringFade * 0.95;
+  ctx.strokeStyle = t < 0.4 ? "#ffffff" : color;
+  ctx.lineWidth = 5 * ringFade + 1.5;
   ctx.beginPath();
-  ctx.ellipse(s.x, s.y, baseR * (0.4 + t * 0.9), baseR * 0.5 * (0.4 + t * 0.9), 0, 0, Math.PI * 2);
+  ctx.ellipse(s.x, s.y, baseR * (0.45 + t * 1.1), baseR * 0.5 * (0.45 + t * 1.1), 0, 0, Math.PI * 2);
   ctx.stroke();
   // a few droplets flung outward
   ctx.globalAlpha = (1 - t);
