@@ -1,0 +1,12 @@
+# Local MCP config — contains the GameLab Studio API key, keep it out of git
+.mcp.json
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Syntax-check scratch file (from CLAUDE.md verify snippet)
+_check.js
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

@@ -1,0 +1,105 @@
+# Character Creation — Paint Arena
+
+Plan for generating the game's character art via the **GameLab Studio MCP** and
+wiring it into the game. Built around two hard constraints:
+
+1. **Low credit budget (~185 credits).** Generate the *minimum* number of
+   sprites; recolor in code instead of generating per team.
+2. **MCP crashes on heavy sprites.** Keep every sprite small, low-color, and
+   one-per-call. No sprite sheets, no large canvases.
+
+## MCP connection
+
+- Server: `gamelab-studio` (SSE) — `http://api.gamelabstudio.co:8765/sse`
+- Configured in the project's `.claude.json`. Auth via `X-API-Key` header.
+- **Tools load on Claude Code restart** — after adding the server mid-session,
+  reload the window so the `gamelab-studio` tools become available.
+
+## The character: "Paint Blob Bot"
+
+A small, round robot shaped like a paint droplet — a legged ink blob with two
+dot eyes and a paint nozzle. Chosen because:
+
+- **Single facing.** Round and symmetric, so it needs **no directional frames** —
+  the game already shows aim with a white nose-dot. One sprite, not 4–8.
+- **Recolor-friendly.** Neutral grey body + **one accent zone** (visor / belly /
+  paint tank). Generated **once**, then code-swaps the accent to team colors:
+  - Player = teal `#38e0c8`
+  - Enemy  = orange `#ff9f43`
+- **Low-res forgiving + on-theme** ("paint bots claiming a test arena").
+
+Avoid: humans, limbed animals, distinct front/back designs — they need multiple
+facings and burn credits.
+
+## Asset specs (keep the MCP happy)
+
+| # | Asset | Generate at | Canvas | Palette | Priority |
+|---|-------|-------------|--------|---------|----------|
+| 1 | Blob bot (neutral, recolor-ready) | 32×48 | 64×64 transparent | ≤12 colors | **Must** |
+| 2 | Paint splat decal (greyscale) | 32×32 | 32×32 transparent | ≤6 greys | Nice |
+| 3 | Weapon icon (silhouette) | 32×32 | 32×32 transparent | ≤6 colors | Optional |
+
+Rules for every generation:
+- **Transparent PNG**, **no baked shadow** (the game draws its own).
+- **One sprite per call** — never request a sheet or multiple frames.
+- **≤ 64×64** source resolution.
+- Keep the recolorable accent a **single flat color region** so a code palette
+  swap is clean.
+
+Everything else (tiles, HUD, ink meter, buttons, splash effects) stays
+**code-drawn = 0 credits**.
+
+## Generation prompts (ready to paste)
+
+**1 — Blob bot (the essential one):**
+> simple pixel art robot shaped like a rounded paint droplet, front view,
+> neutral light-grey metallic body, one flat mid-grey accent panel on the belly,
+> two black dot eyes, small paint nozzle, stubby legs, 32x48 pixels, limited
+> 12-color palette, clean readable silhouette, transparent background, no shadow,
+> no text
+
+**2 — Paint splat decal (optional):**
+> simple pixel art paint splat blob, top-down, solid white shape with a few
+> droplets, 32x32 pixels, greyscale only, transparent background, no shadow
+
+**3 — Weapon icon (only if weapons added):**
+> simple pixel art paint blaster icon, side silhouette, flat grey, 32x32 pixels,
+> 6-color palette, transparent background, no shadow
+
+> Tighter prompt = fewer crashes/retries = fewer wasted credits. If a result
+> comes back wrong, refine the prompt before regenerating.
+
+## Credit budget plan (~185)
+
+| Spend | Item | Notes |
+|-------|------|-------|
+| 1 gen | Blob bot | covers **both** teams via recolor |
+| 1 gen | Splat decal | optional polish |
+| 1 gen | Weapon icon | only with the weapon system |
+| rest  | **retry buffer** | crashes happen — keep headroom |
+
+Do **not** generate: per-team copies, per-direction frames, or sprite sheets.
+
+## Integration into the game (no further credits)
+
+Once the PNG exists, drop it in and the engine handles the rest:
+
+- Save to `assets/blob-bot.png` (create the folder).
+- Add a small **sprite-loading layer** in `index.html`:
+  - `ctx.imageSmoothingEnabled = false` (set after each `resize()`) for crisp
+    pixels.
+  - Load the image; **fall back to the current capsule** if it's missing, so the
+    game always runs.
+  - Draw it scaled by an integer factor (~×1.5–×2) in `drawCharacter`, replacing
+    the capsule body. Keep the white nose-dot for aim.
+- **Team recolor:** tint the accent region per `owner` (offscreen-canvas palette
+  swap, or generate-time neutral + a colored overlay). One source sprite → two
+  teams.
+
+## Checklist
+
+- [ ] Restart Claude Code so `gamelab-studio` tools load
+- [ ] Generate the blob bot (prompt #1) → `assets/blob-bot.png`
+- [ ] Add sprite-loading + recolor layer to `index.html` (placeholder fallback)
+- [ ] (Optional) Generate splat decal + weapon icon
+- [ ] Verify in browser on PC + mobile; confirm both team colors read clearly
