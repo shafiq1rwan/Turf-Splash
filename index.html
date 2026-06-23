@@ -137,6 +137,30 @@
     -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
   }
   #pauseBtn:active { transform: scale(0.94); }
+
+  /* ---- Compact layout for short / landscape-phone viewports ---- */
+  @media (max-height: 560px) {
+    .overlay { padding: 10px; }
+    .card { width: min(460px, 96vw); padding: 13px 18px; gap: 7px; border-radius: 18px; }
+    .title, .result-title { font-size: clamp(20px, 7.5vh, 40px); letter-spacing: 1px; }
+    .tagline { font-size: clamp(11px, 3.2vh, 14px); padding: 4px 12px; }
+    .sub { font-size: clamp(11px, 3vh, 14px); line-height: 1.35; max-width: 46ch; }
+    .controls { padding: 7px 10px; gap: 4px; }
+    .ctrl-row { font-size: 11px; gap: 6px; }
+    .key { padding: 2px 6px; font-size: 11px; }
+    .legend { font-size: 13px; gap: 18px; }
+    .scoreline { font-size: clamp(20px, 7.5vh, 32px); }
+    .turfbar { height: 13px; }
+    button.btn { padding: 9px 18px; font-size: clamp(14px, 3.8vh, 17px);
+      box-shadow: 0 5px 0 #1f9a89, 0 6px 14px rgba(0,0,0,.35); }
+    button.btn:active { box-shadow: 0 2px 0 #1f9a89; }
+    button.btn.ghost { box-shadow: 0 5px 0 rgba(0,0,0,.28), 0 6px 14px rgba(0,0,0,.3); }
+  }
+  /* Very short screens: trim the long blurb so actions stay on-screen */
+  @media (max-height: 410px) {
+    .card { gap: 6px; padding: 11px 16px; }
+    #startScreen .sub { display: none; }
+  }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -735,13 +759,17 @@ const joy = { active: false, id: null, ox: 0, oy: 0, dx: 0, dy: 0, r: 60 };
 const btnPaint = { id: null }, btnDash = { id: null };
 
 function uiLayout() {
-  // Joystick bottom-left, buttons bottom-right.
+  // Joystick bottom-left; action buttons bottom-right. Paint is the big primary
+  // in the corner, dash sits to its left — both kept clear of the right-edge ink
+  // meter so the thumb never overlaps it.
   const m = 90;
   joy.baseX = m;
   joy.baseY = viewH - m;
+  const pr = 50, dr = 37;
+  const px = viewW - 26 - pr;                 // paint center x
   return {
-    paint: { x: viewW - 80, y: viewH - 90, r: 48 },
-    dash:  { x: viewW - 170, y: viewH - 60, r: 38 },
+    paint: { x: px,                  y: viewH - 30 - pr, r: pr },
+    dash:  { x: px - pr - 10 - dr,   y: viewH - 26 - dr, r: dr },
   };
 }
 
@@ -1235,10 +1263,15 @@ function drawHUD() {
 }
 
 function drawInkMeter() {
-  // vertical bar, centered on the right edge
-  const w = 20;
-  const h = Math.min(viewH * 0.42, 200);
-  const x = viewW - 34, y = (viewH - h) / 2;
+  // vertical bar on the right edge; centered when there's room, but biased up on
+  // short screens so it always clears the bottom-right paint/dash buttons.
+  const w = 18;
+  const x = viewW - 30;
+  const topLimit = 56;
+  const botLimit = viewH - 140;                       // above the button cluster
+  const h = Math.min(180, Math.max(64, botLimit - topLimit));
+  let y = Math.max(topLimit, Math.round((viewH - h) / 2));
+  if (y + h > botLimit) y = botLimit - h;
   const pct = player.ink / STATS.maxInk;
   const low = player.ink < STATS.inkPerShot;
   const full = player.ink >= STATS.maxInk - 0.01;
@@ -1289,11 +1322,11 @@ function drawInkMeter() {
   ctx.lineWidth = 2;
   roundRect(x, y, w, h, w / 2); ctx.stroke();
 
-  // label under the bar
-  ctx.fillStyle = "#fff";
+  // label above the bar (keeps the area below clear for the buttons)
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
   ctx.font = "bold 11px sans-serif";
-  ctx.textAlign = "center"; ctx.textBaseline = "top";
-  ctx.fillText("INK", x + w / 2, y + h + 9);
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.fillText("INK", x + w / 2, y - 6);
 
   inkPrev = player.ink;
 }
@@ -1301,26 +1334,93 @@ function drawInkMeter() {
 function drawTouchUI() {
   if (!touchActive && !isTouchDevice) return;
   const ui = uiLayout();
-  // joystick
-  ctx.globalAlpha = 0.5;
-  ctx.fillStyle = "#000"; ctx.beginPath();
-  ctx.arc(joy.active ? joy.ox : joy.baseX, joy.active ? joy.oy : joy.baseY, joy.r, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#fff"; ctx.beginPath();
-  const kx = (joy.active ? joy.ox : joy.baseX) + joy.dx;
-  const ky = (joy.active ? joy.oy : joy.baseY) + joy.dy;
-  ctx.arc(kx, ky, 26, 0, Math.PI * 2); ctx.fill();
-  // paint button
-  ctx.fillStyle = joyPaint ? COLORS.player : "rgba(56,224,200,0.5)";
-  ctx.beginPath(); ctx.arc(ui.paint.x, ui.paint.y, ui.paint.r, 0, Math.PI * 2); ctx.fill();
-  // dash button
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
-  ctx.beginPath(); ctx.arc(ui.dash.x, ui.dash.y, ui.dash.r, 0, Math.PI * 2); ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = "#06231f"; ctx.font = "bold 16px sans-serif";
+
+  // ---- joystick (ring base + light knob) ----
+  const jx = joy.active ? joy.ox : joy.baseX;
+  const jy = joy.active ? joy.oy : joy.baseY;
+  ctx.beginPath(); ctx.arc(jx, jy, joy.r, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(8,10,14,0.42)"; ctx.fill();
+  ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,0.20)"; ctx.stroke();
+  const kx = jx + joy.dx, ky = jy + joy.dy;
+  ctx.beginPath(); ctx.arc(kx, ky, 26, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.88)"; ctx.fill();
+
+  // ---- paint button (primary; dims when out of ink) ----
+  const inkOK = player.ink >= STATS.inkPerShot;
+  drawActionButton(ui.paint.x, ui.paint.y, ui.paint.r, {
+    pressed: joyPaint, enabled: inkOK, icon: "splat", label: "PAINT",
+    fill: inkOK ? ["#5cf0db", "#28c2ab"] : ["#3a4750", "#2b343b"],
+    ring: inkOK ? "rgba(150,250,235,0.95)" : "rgba(255,255,255,0.18)",
+    fg: inkOK ? "#06231f" : "rgba(255,255,255,0.5)",
+  });
+
+  // ---- dash button (cooldown sweep depletes while recharging) ----
+  const dashReady = player.dashCooldown <= 0;
+  drawActionButton(ui.dash.x, ui.dash.y, ui.dash.r, {
+    pressed: false, enabled: dashReady, icon: "dash", label: "DASH",
+    fill: dashReady ? ["#6b7787", "#3e4856"] : ["#2b323c", "#222831"],
+    ring: dashReady ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.22)",
+    fg: dashReady ? "#fff" : "rgba(255,255,255,0.45)",
+    cooldown: dashReady ? 1 : 1 - Math.max(0, player.dashCooldown) / STATS.dashCooldown,
+  });
+}
+
+// A round action button: shadow, gradient body, optional cooldown sweep, ring,
+// icon and label. Scales down a touch while pressed for tactile feedback.
+function drawActionButton(x, y, r, o) {
+  ctx.save();
+  // drop shadow
+  ctx.beginPath(); ctx.arc(x, y + 3, r, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.32)"; ctx.fill();
+  // press feedback
+  const sc = o.pressed ? 0.93 : 1;
+  ctx.translate(x, y); ctx.scale(sc, sc); ctx.translate(-x, -y);
+  // body
+  const g = ctx.createLinearGradient(x, y - r, x, y + r);
+  g.addColorStop(0, o.fill[0]); g.addColorStop(1, o.fill[1]);
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = g; ctx.fill();
+  // cooldown sweep — darken the not-yet-recharged remainder (clockwise from top)
+  if (o.cooldown != null && o.cooldown < 1) {
+    const a0 = -Math.PI / 2 + Math.PI * 2 * o.cooldown;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.arc(x, y, r, a0, -Math.PI / 2 + Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fill();
+  }
+  // ring
+  ctx.lineWidth = 3; ctx.strokeStyle = o.ring;
+  ctx.beginPath(); ctx.arc(x, y, r - 1.5, 0, Math.PI * 2); ctx.stroke();
+  // icon + label
+  if (o.icon === "splat") drawSplatIcon(x, y - r * 0.16, r * 0.42, o.fg);
+  else drawDashIcon(x, y - r * 0.16, r * 0.40, o.fg);
+  ctx.fillStyle = o.fg;
+  ctx.font = "bold " + Math.round(r * 0.30) + "px sans-serif";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("PAINT", ui.paint.x, ui.paint.y);
-  ctx.fillStyle = "#222";
-  ctx.fillText("DASH", ui.dash.x, ui.dash.y);
+  ctx.fillText(o.label, x, y + r * 0.46);
+  ctx.restore();
+}
+
+function drawSplatIcon(cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(cx, cy, s * 0.72, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + s * 0.95, cy - s * 0.55, s * 0.24, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - s * 0.9, cy + s * 0.5, s * 0.30, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + s * 0.45, cy + s * 0.95, s * 0.20, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawDashIcon(cx, cy, s, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, s * 0.34);
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (let i = 0; i < 2; i++) {
+    const ox = cx - s * 0.45 + i * s * 0.72;
+    ctx.beginPath();
+    ctx.moveTo(ox - s * 0.3, cy - s * 0.62);
+    ctx.lineTo(ox + s * 0.32, cy);
+    ctx.lineTo(ox - s * 0.3, cy + s * 0.62);
+    ctx.stroke();
+  }
 }
 
 function render() {
