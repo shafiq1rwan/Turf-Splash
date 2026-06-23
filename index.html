@@ -572,13 +572,25 @@ function isBlocked(col, row) {
   return blocked[r][c];
 }
 
-// Randomized, point-symmetric obstacle layout (so neither team has an edge).
-// Each chosen cell is blocked with its 180°-rotated mirror. Blocks are kept
-// non-adjacent (no long walls / traps — the arena stays fully connected) and
-// clear of both spawns. Walls are paintable cover: they block movement + shots
-// but take ink and count as turf. Tune OBSTACLE_COUNT / spacing here.
-const OBSTACLE_COUNT_MIN = 5, OBSTACLE_COUNT_MAX = 8;   // distinct cells (each is mirrored → up to 2x)
-const OBSTACLE_SPAWN_CLEAR = 3.5;                       // keep this many tiles clear around spawns
+// Hand-designed, point-symmetric cover layouts (so neither team has an edge).
+// A layout is a set of formations; each formation lists HALF its cells (with a
+// prop-variant index) and the 180°-rotated mirror is added automatically, so the
+// arena always looks deliberately arranged. Walls are paintable cover: they block
+// movement + shots but take ink and count as turf. Tune layouts here.
+// Cells are tuned for an 18×18 grid; out-of-bounds / too-close-to-spawn cells are
+// skipped so it degrades gracefully if GRID_* changes.
+const OBSTACLE_SPAWN_CLEAR = 3.0;          // keep this many tiles clear around spawns
+const OBSTACLE_LAYOUTS = [
+  // pillar ring — five symmetric pillars framing the centre
+  [ {v:0,cells:[[8,8]]}, {v:1,cells:[[5,5]]}, {v:1,cells:[[12,5]]},
+    {v:2,cells:[[8,5]]}, {v:2,cells:[[5,8]]} ],
+  // parallel mid-walls — two short cover walls + a centre pair
+  [ {v:0,cells:[[8,8]]}, {v:1,cells:[[7,6],[8,6],[9,6]]} ],
+  // cross core — a 2×2 block at centre with four satellites
+  [ {v:0,cells:[[8,8],[8,9]]}, {v:1,cells:[[8,4]]}, {v:2,cells:[[4,8]]} ],
+  // L-brackets — mirrored corner cover + a centre pair
+  [ {v:0,cells:[[8,8]]}, {v:1,cells:[[5,6],[6,6],[5,7]]} ],
+];
 function buildObstacles(pStart, eStart) {
   blocked = [];
   coverVariant = [];
@@ -590,28 +602,18 @@ function buildObstacles(pStart, eStart) {
   const nearSpawn = (c, r) =>
     Math.hypot(c - pStart.col, r - pStart.row) < OBSTACLE_SPAWN_CLEAR ||
     Math.hypot(c - eStart.col, r - eStart.row) < OBSTACLE_SPAWN_CLEAR;
-  const hasNeighbor = (c, r) => {
-    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
-      const nc = c + dc, nr = r + dr;
-      if (nc >= 0 && nc < GRID_W && nr >= 0 && nr < GRID_H && blocked[nr][nc]) return true;
-    }
-    return false;
+  const layout = OBSTACLE_LAYOUTS[Math.floor(Math.random() * OBSTACLE_LAYOUTS.length)];
+  const vOff = Math.floor(Math.random() * COVER_COUNT);   // rotate the prop palette per match
+  const place = (c, r, v) => {
+    if (c < 0 || c >= GRID_W || r < 0 || r >= GRID_H || nearSpawn(c, r)) return;
+    blocked[r][c] = true;
+    coverVariant[r][c] = (v + vOff) % COVER_COUNT;
   };
-  const want = OBSTACLE_COUNT_MIN + Math.floor(Math.random() * (OBSTACLE_COUNT_MAX - OBSTACLE_COUNT_MIN + 1));
-  let placed = 0, tries = 0;
-  while (placed < want && tries < 300) {
-    tries++;
-    const c = 1 + Math.floor(Math.random() * (GRID_W - 2));
-    const r = 1 + Math.floor(Math.random() * (GRID_H - 2));
-    const mc = GRID_W - 1 - c, mr = GRID_H - 1 - r;
-    if (c === mc && r === mr) continue;                 // skip the exact center (no distinct mirror)
-    if (nearSpawn(c, r) || nearSpawn(mc, mr)) continue;
-    if (blocked[r][c] || blocked[mr][mc]) continue;
-    if (hasNeighbor(c, r) || hasNeighbor(mc, mr)) continue;   // keep blocks spread out
-    const v = Math.floor(Math.random() * COVER_COUNT);   // same prop for the mirrored pair
-    blocked[r][c] = true;  coverVariant[r][c] = v;
-    blocked[mr][mc] = true; coverVariant[mr][mc] = v;
-    placed++;
+  for (const f of layout) {
+    for (const [c, r] of f.cells) {
+      place(c, r, f.v);                              // one side
+      place(GRID_W - 1 - c, GRID_H - 1 - r, f.v);    // 180° mirror
+    }
   }
 }
 

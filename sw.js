@@ -1,6 +1,6 @@
 /* Turf Splash service worker — caches the app shell for offline play + PWA install.
    Bump CACHE when shipping new assets so clients refresh. */
-const CACHE = "turf-splash-v10";
+const CACHE = "turf-splash-v11";
 const SHELL = [
   "./",
   "./index.html",
