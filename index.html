@@ -238,11 +238,10 @@ resize();
 // One neutral source PNG, tinted to each team color on an offscreen canvas.
 // Falls back to the placeholder capsule if the image is missing.
 // ----------------------------------------------------------------------------
-// Character art: the "Painter" (128px). Static still for idle/standing; a
-// run-and-shoot spritesheet plays while moving. One neutral sprite, tinted per
-// team. Both share a single foot-anchor (measured from the 128px PNGs).
-const HERO_SRC = "assets/painter.png";          // static still (idle / standing)
-const ANIM_SRC = "assets/painter-run.png";      // run + shoot sheet (moving)
+// Character art: the "Painter" (128px). Static still sprite, tinted per team,
+// foot-anchored (measured from the 128px PNG). A directional run animation is
+// pending; until then movement also uses the still (animReady stays false).
+const HERO_SRC = "assets/painter.png";          // static still
 const TEAM_TINT = 0.42;        // how strongly to push the sprite toward team color
 
 // Sprite placement (128px frames). Anchor by the measured feet row so the
@@ -289,18 +288,6 @@ function tintSprite(img, color, amt) {
   };
   img.onerror = () => { heroReady = false; };  // keep capsule fallback
   img.src = HERO_SRC;
-})();
-
-(() => {
-  const img = new Image();
-  img.onload = () => {
-    animPlayer = tintSprite(img, COLORS.player, TEAM_TINT);
-    animEnemy  = tintSprite(img, COLORS.enemy, TEAM_TINT);
-    animReady = true;
-    if (state === "menu") render();
-  };
-  img.onerror = () => { animReady = false; };  // fall back to static sprite
-  img.src = ANIM_SRC;
 })();
 
 // Greyscale splat decal — fully recolored to each team for the landing burst.
