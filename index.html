@@ -446,27 +446,33 @@ let SPLAT_W = 32, SPLAT_H = 32;
   img.src = SPLAT_SRC;
 })();
 
-// Graffiti cover block — isometric concrete cube prop for obstacles/cover.
-// Drawn plain when neutral; tinted toward the owning team once painted.
-// Falls back to the code-drawn cube if the PNG is missing.
-const COVER_SRC = "assets/cover-block.png";
-const COVER_FRAME = 128;
-const COVER_CONTENT_W = 102;          // measured base-diamond width in the sprite
-const COVER_BASE_CX = 63.5, COVER_BASE_CY = 93.5;   // base-diamond center in the sprite
+// Cover-block props — Kai-styled isometric blocks (kept grey so the team wash
+// reads). Several variants for visual variety; one is chosen per obstacle cell.
+// Drawn plain when neutral; tinted toward the owning team once painted. Falls
+// back to the code-drawn cube for any variant whose PNG is missing.
+const COVER_SRCS = [
+  "assets/cover-block.png",     // concrete cube
+  "assets/cover-crate.png",     // wooden crate
+  "assets/cover-sandbag.png",   // sandbag / barrier
+];
+const COVER_COUNT = COVER_SRCS.length;
+const COVER_FRAME = 64;
+const COVER_CONTENT_W = 64;           // measured base-diamond width in the sprite
+const COVER_BASE_CX = 31.5, COVER_BASE_CY = 47;   // base-diamond center in the sprite
 const COVER_TINT = 0.5;               // team wash strength on painted blocks
 let coverReady = false;
-let coverImg = null, coverPlayer = null, coverEnemy = null;
-(() => {
+const coverImg = [], coverPlayer = [], coverEnemy = [];
+COVER_SRCS.forEach((src, i) => {
   const img = new Image();
   img.onload = () => {
-    coverImg    = img;
-    coverPlayer = tintSprite(img, COLORS.player, COVER_TINT);
-    coverEnemy  = tintSprite(img, COLORS.enemy, COVER_TINT);
+    coverImg[i]    = img;
+    coverPlayer[i] = tintSprite(img, COLORS.player, COVER_TINT);
+    coverEnemy[i]  = tintSprite(img, COLORS.enemy, COVER_TINT);
     coverReady = true;
   };
-  img.onerror = () => { coverReady = false; };  // keep code-drawn cube fallback
-  img.src = COVER_SRC;
-})();
+  img.onerror = () => {};   // this variant → code-drawn cube fallback per draw
+  img.src = src;
+});
 
 // ----------------------------------------------------------------------------
 // Audio (WebAudio, no files) — must be unlocked by a user gesture.
@@ -575,9 +581,11 @@ const OBSTACLE_COUNT_MIN = 5, OBSTACLE_COUNT_MAX = 8;   // distinct cells (each 
 const OBSTACLE_SPAWN_CLEAR = 3.5;                       // keep this many tiles clear around spawns
 function buildObstacles(pStart, eStart) {
   blocked = [];
+  coverVariant = [];
   for (let r = 0; r < GRID_H; r++) {
     blocked[r] = [];
-    for (let c = 0; c < GRID_W; c++) blocked[r][c] = false;
+    coverVariant[r] = [];
+    for (let c = 0; c < GRID_W; c++) { blocked[r][c] = false; coverVariant[r][c] = 0; }
   }
   const nearSpawn = (c, r) =>
     Math.hypot(c - pStart.col, r - pStart.row) < OBSTACLE_SPAWN_CLEAR ||
@@ -600,8 +608,9 @@ function buildObstacles(pStart, eStart) {
     if (nearSpawn(c, r) || nearSpawn(mc, mr)) continue;
     if (blocked[r][c] || blocked[mr][mc]) continue;
     if (hasNeighbor(c, r) || hasNeighbor(mc, mr)) continue;   // keep blocks spread out
-    blocked[r][c] = true;
-    blocked[mr][mc] = true;
+    const v = Math.floor(Math.random() * COVER_COUNT);   // same prop for the mirrored pair
+    blocked[r][c] = true;  coverVariant[r][c] = v;
+    blocked[mr][mc] = true; coverVariant[mr][mc] = v;
     placed++;
   }
 }
@@ -611,6 +620,7 @@ function buildObstacles(pStart, eStart) {
 // ----------------------------------------------------------------------------
 let tiles;          // tiles[row][col] = owner
 let blocked;        // blocked[row][col] = obstacle (impassable, unpaintable)
+let coverVariant;   // coverVariant[row][col] = which cover-prop sprite (0..COVER_COUNT-1)
 let spawnPlayer, spawnEnemy;   // {col,row} home pads
 // player/enemy are declared up in the canvas section (so resize()'s follow-cam can read them)
 let projectiles;
@@ -1029,14 +1039,15 @@ const OBSTACLE_FACES = {
   [OWNER.PLAYER]: { top: "#5cf0da", left: "#2bb6a3", right: "#1f8576" },
   [OWNER.ENEMY]:  { top: "#ffb866", left: "#e0853a", right: "#b3641b" },
 };
-function drawObstacle(cx, cy, owner) {
-  if (coverReady) {
-    // graffiti cube sprite — scale so its base diamond matches the tile, anchor
-    // the base-diamond center to (cx, cy) so the cube sits on the tile.
+function drawObstacle(cx, cy, owner, variant) {
+  const v = (variant | 0) % COVER_COUNT;
+  const img = owner === OWNER.PLAYER ? coverPlayer[v]
+            : owner === OWNER.ENEMY  ? coverEnemy[v]
+            : coverImg[v];
+  if (img) {
+    // block sprite — scale so its base diamond matches the tile, anchor the
+    // base-diamond center to (cx, cy) so the block sits on the tile.
     const S = TILE_W / COVER_CONTENT_W;
-    const img = owner === OWNER.PLAYER ? coverPlayer
-              : owner === OWNER.ENEMY  ? coverEnemy
-              : coverImg;
     ctx.drawImage(img, cx - COVER_BASE_CX * S, cy - COVER_BASE_CY * S, COVER_FRAME * S, COVER_FRAME * S);
     return;
   }
@@ -1459,7 +1470,7 @@ function render() {
   }
   drawables.sort((a, b) => (a.col + a.row) - (b.col + b.row));
   for (const d of drawables) {
-    if (d.kind === "obs") { const s = worldToScreen(d.col, d.row); drawObstacle(s.x, s.y, tiles[d.row][d.col]); }
+    if (d.kind === "obs") { const s = worldToScreen(d.col, d.row); drawObstacle(s.x, s.y, tiles[d.row][d.col], coverVariant[d.row][d.col]); }
     else drawCharacter(d.ref);
   }
 

@@ -1,6 +1,6 @@
 /* Turf Splash service worker — caches the app shell for offline play + PWA install.
    Bump CACHE when shipping new assets so clients refresh. */
-const CACHE = "turf-splash-v9";
+const CACHE = "turf-splash-v10";
 const SHELL = [
   "./",
   "./index.html",
@@ -14,6 +14,8 @@ const SHELL = [
   "./assets/kai-run-w.png",
   "./assets/kai-run-sw.png",
   "./assets/cover-block.png",
+  "./assets/cover-crate.png",
+  "./assets/cover-sandbag.png",
   "./assets/splat-decal.png",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
