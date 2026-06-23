@@ -40,12 +40,18 @@ Key constraints to respect when generating or wiring assets:
 - **Pixel art**, small + low-color (≤64×64, ≤12-color palette, transparent PNG,
   no baked shadow). The MCP crashes/corrupts on heavy sprites — keep them light
   and generate **one sprite per call** (no sheets).
-- **Generate once, recolor in code.** One neutral sprite → both teams (`#38e0c8`
-  / `#ff9f43`) via `tintSprite()` (offscreen canvas, `source-atop` overlay). The
-  character is tinted at `TEAM_TINT` (~0.42, keeps detail); the splat decal is
-  tinted at full alpha. Credit budget is tight — don't generate per-team or
-  per-direction. Left/right facing is a free **horizontal flip** (`ch.faceLeft`),
-  not extra sprites.
+- **Recolor in code via `tintSprite()`** (offscreen canvas, `source-atop` overlay)
+  for the **splat decal** (full alpha) and **cover block** (`COVER_TINT` 0.5). The
+  **character is NOT tinted** — the Painter keeps its natural colors for both teams
+  (tinting its teal body orange looked muddy); ownership is shown by a
+  **team-colored ground ring** (`drawTeamRing`, teal `#38e0c8` / orange `#ff9f43`,
+  with a dark casing so it reads on same-color turf).
+- **Character facing:** 8-direction. Five aiming stills are generated
+  (`assets/painter{,-se,-e,-ne,-n}.png`, 128px) and **se/e/ne are mirrored** for
+  sw/w/nw. `facingDir(ch)` maps grid facing → screen angle → sprite + flip;
+  `DIR_META` holds each sprite's measured foot/center/height anchor. Run motion is
+  a **code-driven vertical bounce** (`RUN_BOB_*`), since the frames are stills.
+  Credit budget is tight — don't generate per-team copies.
 - **Animations** were made via the MCP pipeline `generate_image → generate_video
   → generate_spritesheet`, then the huge (8640²) sheet was **downscaled to a
   384×384 / 64px-frame sheet** with PowerShell `System.Drawing`. Frames play by

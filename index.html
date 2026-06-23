@@ -240,10 +240,10 @@ resize();
 // ----------------------------------------------------------------------------
 // Character art: the "Painter" (128px), 8-direction aiming stills. We generate 5
 // facings (s, se, e, ne, n) and MIRROR se/e/ne to get sw/w/nw. Run motion is
-// code-driven (vertical bob) since these are stills. Each sprite is tinted per
-// team and anchored by its own measured feet row / content center / height.
+// code-driven (vertical bob) since these are stills. The character keeps its
+// natural colors for BOTH teams; ownership is shown by a team-colored ground
+// ring (drawTeamRing). Anchored per sprite by measured feet row / center / height.
 const FRAME_W = 128, FRAME_H = 128;
-const TEAM_TINT = 0.42;        // how strongly to push the sprite toward team color
 const HERO_TARGET_H = 54;      // desired on-screen character height (px)
 const FOOT_BELOW = 2;          // px below tile center where the feet rest
 const RUN_BOB_AMP = 4;         // px of vertical bounce while moving
@@ -265,7 +265,7 @@ const DIR_META = {
   n:  { cx: 63.5, foot: 117, h: 110 },
 };
 let heroReady = false;
-const dirPlayer = {}, dirEnemy = {};
+const dirImg = {};   // natural (untinted) directional sprites, shared by both teams
 
 function tintSprite(img, color, amt) {
   const w = img.naturalWidth || img.width;
@@ -288,8 +288,7 @@ function tintSprite(img, color, amt) {
   keys.forEach((k) => {
     const img = new Image();
     img.onload = () => {
-      dirPlayer[k] = tintSprite(img, COLORS.player, TEAM_TINT);
-      dirEnemy[k]  = tintSprite(img, COLORS.enemy, TEAM_TINT);
+      dirImg[k] = img;
       if (++loaded === keys.length) { heroReady = true; if (state === "menu") render(); }
     };
     img.onerror = () => {};  // missing sprite → capsule fallback for that draw
@@ -960,13 +959,32 @@ function drawSpawnPad(pad, color) {
   ctx.restore();
 }
 
+// Team-colored ground ring under a character — the ownership cue (the body keeps
+// its natural colors). Soft fill + brighter ring on the iso ground plane (2:1).
+function drawTeamRing(s, owner) {
+  const color = owner === OWNER.PLAYER ? COLORS.player : COLORS.enemy;
+  ctx.save();
+  // soft drop shadow first, so the ring reads on any tile color
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath(); ctx.ellipse(s.x, s.y + 1, 15, 7.5, 0, 0, Math.PI * 2); ctx.fill();
+  // team-colored glow + ring
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.ellipse(s.x, s.y, 21, 10.5, 0, 0, Math.PI * 2); ctx.fill();
+  // dark casing so the colored ring stays readable on same-color turf
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "#0c0e12"; ctx.lineWidth = 4.5;
+  ctx.beginPath(); ctx.ellipse(s.x, s.y, 21, 10.5, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.ellipse(s.x, s.y, 21, 10.5, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
 function drawCharacter(ch) {
   const s = worldToScreen(ch.col, ch.row);
-  // shadow (sprite has no baked shadow — the game draws its own)
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  ctx.beginPath();
-  ctx.ellipse(s.x, s.y, 16, 8, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // team-colored ground ring (ownership cue) + shadow
+  drawTeamRing(s, ch.owner);
 
   // 8-direction facing from grid facing → sprite key + horizontal mirror.
   const dir = facingDir(ch);
@@ -976,10 +994,10 @@ function drawCharacter(ch) {
     ? Math.abs(Math.sin(gameClock * RUN_BOB_FREQ + (ch.owner === OWNER.ENEMY ? 1.6 : 0))) * RUN_BOB_AMP
     : 0;
 
-  if (heroReady && dirPlayer[dir.k]) {
-    // ---- directional aiming sprite, tinted to the team color ----
+  if (heroReady && dirImg[dir.k]) {
+    // ---- directional aiming sprite (natural colors; ring shows team) ----
     const meta = DIR_META[dir.k];
-    const img = ch.owner === OWNER.PLAYER ? dirPlayer[dir.k] : dirEnemy[dir.k];
+    const img = dirImg[dir.k];
     const S = HERO_TARGET_H / meta.h;                 // normalize on-screen height
     const destX = s.x - meta.cx * S;
     const destY = s.y + FOOT_BELOW - meta.foot * S - bob;   // feet anchored to tile
