@@ -238,28 +238,34 @@ resize();
 // One neutral source PNG, tinted to each team color on an offscreen canvas.
 // Falls back to the placeholder capsule if the image is missing.
 // ----------------------------------------------------------------------------
-// Character art: the "Painter" (128px). Static still sprite, tinted per team,
-// foot-anchored (measured from the 128px PNG). A directional run animation is
-// pending; until then movement also uses the still (animReady stays false).
-const HERO_SRC = "assets/painter.png";          // static still
+// Character art: the "Painter" (128px), 8-direction aiming stills. We generate 5
+// facings (s, se, e, ne, n) and MIRROR se/e/ne to get sw/w/nw. Run motion is
+// code-driven (vertical bob) since these are stills. Each sprite is tinted per
+// team and anchored by its own measured feet row / content center / height.
+const FRAME_W = 128, FRAME_H = 128;
 const TEAM_TINT = 0.42;        // how strongly to push the sprite toward team color
-
-// Sprite placement (128px frames). Anchor by the measured feet row so the
-// character stands ON the tile. Still: content y[5..120], cx ~64. Run sheet:
-// cx ~64, planted foot ~row 120. Shared constants below.
 const HERO_TARGET_H = 54;      // desired on-screen character height (px)
 const FOOT_BELOW = 2;          // px below tile center where the feet rest
-const SPR_CONTENT_H = 116;     // character content height in the 128px frame
-const SPR_CX = 64;             // content center x in the frame
-const SPR_FOOT_Y = 120;        // feet row in the frame
-let heroReady = false;
-let heroPlayer = null, heroEnemy = null;
-let HERO_W = 128, HERO_H = 128;
+const RUN_BOB_AMP = 4;         // px of vertical bounce while moving
+const RUN_BOB_FREQ = 16;       // bounce speed (rad/sec)
 
-const ANIM_COLS = 6, ANIM_FRAMES = 32, ANIM_FPS = 8;
-const FRAME_W = 128, FRAME_H = 128;
-let animReady = false;
-let animPlayer = null, animEnemy = null;
+const DIR_SRC = {
+  s:  "assets/painter.png",
+  se: "assets/painter-se.png",
+  e:  "assets/painter-e.png",
+  ne: "assets/painter-ne.png",
+  n:  "assets/painter-n.png",
+};
+// measured per sprite: content center x, feet row, content height (128px frames)
+const DIR_META = {
+  s:  { cx: 64.5, foot: 120, h: 116 },
+  se: { cx: 67.0, foot: 119, h: 114 },
+  e:  { cx: 65.5, foot: 110, h: 101 },
+  ne: { cx: 64.0, foot: 115, h: 108 },
+  n:  { cx: 63.5, foot: 117, h: 110 },
+};
+let heroReady = false;
+const dirPlayer = {}, dirEnemy = {};
 
 function tintSprite(img, color, amt) {
   const w = img.naturalWidth || img.width;
@@ -277,18 +283,38 @@ function tintSprite(img, color, amt) {
 }
 
 (() => {
-  const img = new Image();
-  img.onload = () => {
-    HERO_W = img.naturalWidth || 128;
-    HERO_H = img.naturalHeight || 128;
-    heroPlayer = tintSprite(img, COLORS.player, TEAM_TINT);
-    heroEnemy  = tintSprite(img, COLORS.enemy, TEAM_TINT);
-    heroReady = true;
-    if (state === "menu") render();   // refresh the menu preview once loaded
-  };
-  img.onerror = () => { heroReady = false; };  // keep capsule fallback
-  img.src = HERO_SRC;
+  const keys = Object.keys(DIR_SRC);
+  let loaded = 0;
+  keys.forEach((k) => {
+    const img = new Image();
+    img.onload = () => {
+      dirPlayer[k] = tintSprite(img, COLORS.player, TEAM_TINT);
+      dirEnemy[k]  = tintSprite(img, COLORS.enemy, TEAM_TINT);
+      if (++loaded === keys.length) { heroReady = true; if (state === "menu") render(); }
+    };
+    img.onerror = () => {};  // missing sprite → capsule fallback for that draw
+    img.src = DIR_SRC[k];
+  });
 })();
+
+// Map a character's grid facing to one of 8 screen directions → {sprite key, flip}.
+function facingDir(ch) {
+  const sdx = (ch.fx - ch.fy) * (TILE_W / 2);   // grid facing → screen delta
+  const sdy = (ch.fx + ch.fy) * (TILE_H / 2);
+  let ang = Math.atan2(sdy, sdx) * 180 / Math.PI;
+  if (ang < 0) ang += 360;
+  const idx = Math.round(ang / 45) % 8;         // 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
+  return [
+    { k: "e",  flip: false }, // E
+    { k: "se", flip: false }, // SE
+    { k: "s",  flip: false }, // S (down)
+    { k: "se", flip: true  }, // SW
+    { k: "e",  flip: true  }, // W
+    { k: "ne", flip: true  }, // NW
+    { k: "n",  flip: false }, // N (up)
+    { k: "ne", flip: false }, // NE
+  ][idx];
+}
 
 // Greyscale splat decal — fully recolored to each team for the landing burst.
 // Falls back to the code-drawn splat blob if missing.
@@ -499,8 +525,7 @@ function makeCharacter(owner, col, row) {
     cooldown: 0,
     dashTimer: 0,
     dashCooldown: 0,
-    walkTimer: 0,             // >0 while recently moving (drives walk vs idle anim)
-    faceLeft: false,          // horizontal flip — sprite faces its movement direction
+    walkTimer: 0,             // >0 while recently moving (drives the run bounce)
     // AI fields
     targetCol: col, targetRow: row,
     retarget: 0,
@@ -943,65 +968,41 @@ function drawCharacter(ch) {
   ctx.ellipse(s.x, s.y, 16, 8, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Update left/right facing from the screen-space movement direction.
-  // Deadzone keeps the last facing when moving near-vertically (no flip-flop).
-  // (the source art faces left by default, so mirror when moving screen-right)
-  const faceScreenX = worldToScreen(ch.col + ch.fx, ch.row + ch.fy).x - s.x;
-  if (faceScreenX > 0.5) ch.faceLeft = true;
-  else if (faceScreenX < -0.5) ch.faceLeft = false;
-
-  // height used to anchor the aim dot, set per render path below
-  let topY;
-
-  // Mirror the sprite horizontally (around the character's center) when facing left.
-  ctx.save();
-  if (ch.faceLeft) { ctx.translate(s.x, 0); ctx.scale(-1, 1); ctx.translate(-s.x, 0); }
-
-  const S = HERO_TARGET_H / SPR_CONTENT_H;            // shared scale (still + run)
-  const destX = s.x - SPR_CX * S;
-  const destY = s.y + FOOT_BELOW - SPR_FOOT_Y * S;    // feet anchored to the tile
+  // 8-direction facing from grid facing → sprite key + horizontal mirror.
+  const dir = facingDir(ch);
   const moving = ch.walkTimer > 0;
+  // code-driven run bounce (these are stills); enemy phase-offset so they differ.
+  const bob = moving
+    ? Math.abs(Math.sin(gameClock * RUN_BOB_FREQ + (ch.owner === OWNER.ENEMY ? 1.6 : 0))) * RUN_BOB_AMP
+    : 0;
 
-  if (moving && animReady) {
-    // ---- run + shoot spritesheet, tinted to the team color ----
-    const sheet = ch.owner === OWNER.PLAYER ? animPlayer : animEnemy;
-    // offset the enemy's phase so the two don't run in lockstep
-    const phase = ch.owner === OWNER.ENEMY ? ANIM_FRAMES / 2 : 0;
-    const fi = (Math.floor(gameClock * ANIM_FPS + phase)) % ANIM_FRAMES;
-    const sx = (fi % ANIM_COLS) * FRAME_W;
-    const sy = Math.floor(fi / ANIM_COLS) * FRAME_H;
-    ctx.drawImage(sheet, sx, sy, FRAME_W, FRAME_H, destX, destY, FRAME_W * S, FRAME_H * S);
-    topY = destY;
-  } else if (heroReady) {
-    // ---- static still (standing), tinted to the team color ----
-    const img = ch.owner === OWNER.PLAYER ? heroPlayer : heroEnemy;
-    ctx.drawImage(img, destX, destY, HERO_W * S, HERO_H * S);
-    topY = destY;
+  if (heroReady && dirPlayer[dir.k]) {
+    // ---- directional aiming sprite, tinted to the team color ----
+    const meta = DIR_META[dir.k];
+    const img = ch.owner === OWNER.PLAYER ? dirPlayer[dir.k] : dirEnemy[dir.k];
+    const S = HERO_TARGET_H / meta.h;                 // normalize on-screen height
+    const destX = s.x - meta.cx * S;
+    const destY = s.y + FOOT_BELOW - meta.foot * S - bob;   // feet anchored to tile
+    if (dir.flip) {
+      ctx.save();
+      ctx.translate(s.x, 0); ctx.scale(-1, 1); ctx.translate(-s.x, 0);
+      ctx.drawImage(img, destX, destY, FRAME_W * S, FRAME_H * S);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, destX, destY, FRAME_W * S, FRAME_H * S);
+    }
   } else {
     // ---- placeholder capsule fallback ----
     const bodyColor = ch.owner === OWNER.PLAYER ? COLORS.player : COLORS.enemy;
     const darkColor = ch.owner === OWNER.PLAYER ? COLORS.playerDark : COLORS.enemyDark;
     const h = 34, w = 22;
     ctx.fillStyle = darkColor;
-    roundRect(s.x - w / 2, s.y - h, w, h, w / 2);
+    roundRect(s.x - w / 2, s.y - h - bob, w, h, w / 2);
     ctx.fill();
     ctx.fillStyle = bodyColor;
-    roundRect(s.x - w / 2 + 3, s.y - h + 3, w - 6, h - 8, (w - 6) / 2);
+    roundRect(s.x - w / 2 + 3, s.y - h + 3 - bob, w - 6, h - 8, (w - 6) / 2);
     ctx.fill();
-    topY = s.y - h;
   }
-
-  ctx.restore();   // end horizontal-flip transform
-
-  // facing aim dot (screen-space from grid facing), near the upper body
-  const sf = worldToScreen(ch.col + ch.fx, ch.row + ch.fy);
-  let nx = sf.x - s.x, ny = sf.y - s.y;
-  const nl = Math.hypot(nx, ny) || 1; nx /= nl; ny /= nl;
-  const dotY = topY + (s.y - topY) * 0.42;   // ~upper third of the body
-  ctx.fillStyle = "#fff";
-  ctx.beginPath();
-  ctx.arc(s.x + nx * 12, dotY + ny * 8, 3.5, 0, Math.PI * 2);
-  ctx.fill();
 }
 
 function roundRect(x, y, w, h, r) {
