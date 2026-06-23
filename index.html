@@ -474,6 +474,23 @@ COVER_SRCS.forEach((src, i) => {
   img.src = src;
 });
 
+// Floor texture — Kai-styled concrete ground tile, drawn on UNPAINTED tiles only
+// (painted turf stays flat team-color so ownership reads instantly). The sprite's
+// top diamond maps onto the tile diamond; its thin front lip overdraws into the
+// nearer tile (hidden) and gives the floor a subtle raised-panel edge. Falls back
+// to the flat tileNone color if the PNG is missing.
+const FLOOR_SRC = "assets/floor-tile.png";
+const FLOOR_FRAME = 64;
+const FLOOR_CX = 31.5, FLOOR_CY = 37;   // top-diamond center measured in the sprite
+const FLOOR_S = 1;                       // sprite top-diamond ≈ tile diamond
+let floorReady = false, floorImg = null;
+(() => {
+  const img = new Image();
+  img.onload = () => { floorImg = img; floorReady = true; if (state === "menu") render(); };
+  img.onerror = () => { floorReady = false; };
+  img.src = FLOOR_SRC;
+})();
+
 // ----------------------------------------------------------------------------
 // Audio (WebAudio, no files) — must be unlocked by a user gesture.
 // ----------------------------------------------------------------------------
@@ -1028,6 +1045,11 @@ function drawDiamond(cx, cy, owner) {
   else if (owner === OWNER.ENEMY) fill = COLORS.enemy;
   ctx.fillStyle = fill;
   ctx.fill();
+  // textured concrete on unpainted floor only (painted turf stays flat + readable)
+  if (owner === OWNER.NONE && floorReady) {
+    const S = FLOOR_S;
+    ctx.drawImage(floorImg, cx - FLOOR_CX * S, cy - FLOOR_CY * S, FLOOR_FRAME * S, FLOOR_FRAME * S);
+  }
   ctx.strokeStyle = COLORS.grid;
   ctx.lineWidth = 1;
   ctx.stroke();
