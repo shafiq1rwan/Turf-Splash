@@ -10,7 +10,7 @@ and whoever owns more tiles when the 60-second timer ends wins. Code-drawn iso
 tiles/HUD plus a generated **pixel-art character** (idle + walk animations,
 recolored per team). Built to test whether the paint-control loop feels fun, and
 to be easy to expand. Deployed as a PWA on GitHub Pages
-(https://shafiq1rwan.github.io/Turf-Splash/).
+(https://shafiq1rwan.github.io/turf-splash/).
 
 ## Project layout
 
@@ -24,7 +24,7 @@ to be easy to expand. Deployed as a PWA on GitHub Pages
   and PWA `icon-192.png` / `icon-512.png`.
 - `manifest.webmanifest` + `sw.js` — PWA manifest and service worker (offline app
   shell + install). All paths are **relative** so it works under the
-  `/Turf-Splash/` Pages subpath. Bump `CACHE` in `sw.js` when shipping new assets.
+  `/turf-splash/` Pages subpath. Bump `CACHE` in `sw.js` when shipping new assets.
 
 There is no package.json, bundler, framework, or server. Do not add one unless
 asked — zero-setup portability is a core goal. The repo is a git repo with

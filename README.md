@@ -7,7 +7,7 @@ code-drawn iso tiles, paint splashes, and HUD.
 
 ## Play online
 
-**▶ https://shafiq1rwan.github.io/Turf-Splash/** (GitHub Pages)
+**▶ https://shafiq1rwan.github.io/turf-splash/** (GitHub Pages)
 
 On mobile you can **Add to Home Screen** to install it as a fullscreen app —
 it's a PWA and works offline after the first load.
