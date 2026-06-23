@@ -27,48 +27,114 @@
   }
   #game { display: block; width: 100vw; height: 100vh; }
 
-  /* Overlays */
+  /* ---------- Overlays ---------- */
   .overlay {
-    position: fixed; inset: 0;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    text-align: center; gap: 18px;
-    background: rgba(15, 17, 22, 0.82);
-    z-index: 20;
+    position: fixed; inset: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+    background:
+      radial-gradient(120% 90% at 18% 0%, rgba(56,224,200,0.18), transparent 55%),
+      radial-gradient(120% 90% at 88% 100%, rgba(255,159,67,0.16), transparent 55%),
+      rgba(11, 13, 18, 0.80);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    animation: fadeIn .22s ease;
   }
   .overlay.hidden { display: none; }
-  .overlay h1 { font-size: clamp(28px, 8vw, 64px); letter-spacing: 1px; }
-  .tagline {
-    margin-top: -8px;
-    font-size: clamp(15px, 4vw, 24px) !important;
-    font-weight: 700; font-style: italic;
-    color: #38e0c8; opacity: 1 !important;
-    letter-spacing: 0.3px;
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(14px) scale(.98) } to { opacity: 1; transform: none } }
+
+  /* Card panel */
+  .card {
+    width: min(460px, 94vw);
+    max-height: 94vh; overflow-y: auto;
+    display: flex; flex-direction: column; align-items: center; gap: 15px;
+    text-align: center;
+    padding: 28px 26px 24px;
+    background: linear-gradient(180deg, rgba(34,40,52,0.97), rgba(19,23,31,0.97));
+    border: 1px solid rgba(255,255,255,0.09);
+    border-radius: 24px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+    animation: cardIn .26s cubic-bezier(.2,.8,.2,1);
   }
-  .overlay p { font-size: clamp(14px, 3.5vw, 20px); opacity: 0.85; max-width: 90vw; line-height: 1.5; }
-  .score-row { font-size: clamp(16px, 4vw, 26px); display: flex; gap: 28px; }
-  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; margin-right: 6px; }
-  button.btn {
-    margin-top: 6px;
-    font-size: clamp(16px, 4vw, 22px);
-    padding: 14px 34px;
-    border: none; border-radius: 999px;
-    background: #38e0c8; color: #06231f; font-weight: 700;
-    cursor: pointer;
+
+  /* Titles */
+  .title {
+    font-size: clamp(34px, 9vw, 56px);
+    font-weight: 900; letter-spacing: 2px; line-height: 1;
+    background: linear-gradient(180deg, #7af6e3, #38e0c8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 2px 14px rgba(56,224,200,0.35));
   }
-  button.btn:active { transform: scale(0.96); }
-  .win  { color: #38e0c8; }
-  .lose { color: #ff9f43; }
+  .title .pop { -webkit-text-fill-color: #ff9f43; color: #ff9f43; }
+  .result-title { font-size: clamp(30px, 8vw, 50px); font-weight: 900; letter-spacing: 2px; line-height: 1; }
+  .win  { color: #38e0c8; text-shadow: 0 2px 18px rgba(56,224,200,.45); }
+  .lose { color: #ff9f43; text-shadow: 0 2px 18px rgba(255,159,67,.45); }
   .draw { color: #d6d9e0; }
-  button.btn.ghost { background: transparent; color: #fff; border: 2px solid rgba(255,255,255,0.4); }
+
+  .tagline {
+    font-size: clamp(13px, 3.6vw, 16px); font-weight: 800;
+    color: #07302b; background: #38e0c8;
+    padding: 6px 15px; border-radius: 999px;
+  }
+  .sub { font-size: clamp(13px, 3.4vw, 16px); opacity: .82; line-height: 1.5; max-width: 38ch; }
+
+  /* Controls */
+  .controls { display: flex; flex-direction: column; gap: 8px; width: 100%;
+    padding: 12px; border-radius: 14px; background: rgba(0,0,0,0.22);
+    border: 1px solid rgba(255,255,255,0.05); }
+  .ctrl-row { display: flex; align-items: center; gap: 7px; justify-content: center;
+    flex-wrap: wrap; font-size: clamp(11px, 3vw, 13px); opacity: .9; }
+  .ctrl-row .tag { font-weight: 800; color: #38e0c8; letter-spacing: .5px; }
+  .key {
+    display: inline-block; padding: 3px 8px; border-radius: 7px;
+    background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.16);
+    border-bottom-width: 2px; font-size: 12px; font-weight: 700; line-height: 1.1;
+  }
+
+  /* Score legend (start screen) */
+  .legend { display: flex; gap: 24px; font-size: clamp(14px, 3.6vw, 17px); font-weight: 600; }
+  .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 4px;
+    vertical-align: -1px; margin-right: 7px; }
+
+  /* End-screen score + turf bar */
+  .scoreline { display: flex; gap: 30px; font-size: clamp(24px, 6.5vw, 38px); font-weight: 900; }
+  .scoreline .p { color: #38e0c8; } .scoreline .e { color: #ff9f43; }
+  .scoreline .swatch { width: 15px; height: 15px; }
+  .turfbar { width: 100%; height: 16px; border-radius: 999px; overflow: hidden;
+    display: flex; background: #2a2f3a; border: 1px solid rgba(255,255,255,.10); }
+  .turfbar > i { display: block; height: 100%; transition: width .65s cubic-bezier(.2,.8,.2,1); }
+  .turfbar .tp { background: linear-gradient(90deg, #2bc7b0, #7af6e3); }
+  .turfbar .te { background: linear-gradient(90deg, #ffb968, #ff9f43); }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; width: 100%; }
+  button.btn {
+    flex: 1 1 auto; min-width: 130px;
+    font-size: clamp(15px, 4vw, 18px); font-weight: 800; letter-spacing: .3px;
+    padding: 14px 22px; border: none; border-radius: 14px;
+    background: linear-gradient(180deg, #46ecd4, #2bc7b0); color: #06231f;
+    cursor: pointer;
+    box-shadow: 0 6px 0 #1f9a89, 0 8px 18px rgba(0,0,0,.35);
+    transition: transform .06s ease, box-shadow .06s ease;
+  }
+  button.btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #1f9a89, 0 3px 10px rgba(0,0,0,.35); }
+  button.btn.ghost {
+    background: rgba(255,255,255,0.06); color: #fff;
+    border: 1.5px solid rgba(255,255,255,0.26);
+    box-shadow: 0 6px 0 rgba(0,0,0,0.28), 0 8px 18px rgba(0,0,0,.3);
+  }
+  button.btn.ghost:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.28); }
+  button.btn.wide { flex-basis: 100%; }
 
   /* Pause button (corner) */
   #pauseBtn {
     position: fixed; top: 14px; left: 14px; z-index: 15;
-    width: 46px; height: 46px; border-radius: 12px;
-    border: none; background: rgba(0,0,0,0.45); color: #fff;
-    font-size: 18px; font-weight: 700; line-height: 1;
+    width: 48px; height: 48px; border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(10,12,16,0.55); color: #fff;
+    font-size: 15px; font-weight: 800; line-height: 1;
     cursor: pointer; display: flex; align-items: center; justify-content: center;
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
   }
   #pauseBtn:active { transform: scale(0.94); }
   .hidden { display: none !important; }
@@ -79,36 +145,56 @@
 
 <!-- Start screen -->
 <div id="startScreen" class="overlay">
-  <h1>TURF SPLASH</h1>
-  <p class="tagline">Splash more turf than your rival before the timer runs out!</p>
-  <p>Paint more floor than the enemy before the 60&nbsp;second timer runs out.<br>
-     <b>PC:</b> WASD / Arrows to move &middot; Space to paint &middot; Shift to dash.<br>
-     <b>Mobile:</b> left stick to move &middot; right buttons to paint / dash.</p>
-  <div class="score-row">
-    <span><span class="swatch" style="background:#38e0c8"></span>You</span>
-    <span><span class="swatch" style="background:#ff9f43"></span>Enemy</span>
+  <div class="card">
+    <h1 class="title">TURF<span class="pop"> SPLASH</span></h1>
+    <span class="tagline">Out-splash your rival before time runs out!</span>
+    <p class="sub">Paint more floor than the enemy before the 60-second timer ends.
+       Walls are cover — splat them and they count as your turf too.</p>
+    <div class="controls">
+      <div class="ctrl-row"><span class="tag">PC</span>
+        <span class="key">W A S D</span> move
+        <span class="key">Space</span> paint
+        <span class="key">Shift</span> dash</div>
+      <div class="ctrl-row"><span class="tag">MOBILE</span>
+        left stick to move &middot; right buttons to paint / dash</div>
+    </div>
+    <div class="legend">
+      <span><span class="swatch" style="background:#38e0c8"></span>You</span>
+      <span><span class="swatch" style="background:#ff9f43"></span>Enemy</span>
+    </div>
+    <div class="btn-row"><button class="btn wide" id="startBtn">▶&nbsp; Start Match</button></div>
   </div>
-  <button class="btn" id="startBtn">Start Match</button>
 </div>
 
 <!-- End screen -->
 <div id="endScreen" class="overlay hidden">
-  <h1 id="endTitle">Victory</h1>
-  <div class="score-row">
-    <span><span class="swatch" style="background:#38e0c8"></span><span id="endPlayer">0</span></span>
-    <span><span class="swatch" style="background:#ff9f43"></span><span id="endEnemy">0</span></span>
+  <div class="card">
+    <h1 id="endTitle" class="result-title">Victory</h1>
+    <div class="scoreline">
+      <span class="p"><span class="swatch" style="background:#38e0c8"></span><span id="endPlayer">0</span></span>
+      <span class="e"><span class="swatch" style="background:#ff9f43"></span><span id="endEnemy">0</span></span>
+    </div>
+    <div class="turfbar"><i class="tp" id="turfP" style="width:50%"></i><i class="te" id="turfE" style="width:50%"></i></div>
+    <p id="endSub" class="sub"></p>
+    <div class="btn-row">
+      <button class="btn" id="restartBtn">↻&nbsp; Play Again</button>
+      <button class="btn ghost" id="menuBtn">⌂&nbsp; Main Menu</button>
+    </div>
   </div>
-  <p id="endSub"></p>
-  <button class="btn" id="restartBtn">Play Again</button>
 </div>
 
 <!-- Pause button + pause screen -->
 <button id="pauseBtn" class="hidden" aria-label="Pause">&#10073;&#10073;</button>
 <div id="pauseScreen" class="overlay hidden">
-  <h1>PAUSED</h1>
-  <p>Take a breather.</p>
-  <button class="btn" id="resumeBtn">Resume</button>
-  <button class="btn ghost" id="quitBtn">Quit to Menu</button>
+  <div class="card">
+    <h1 class="title" style="font-size:clamp(30px,8vw,46px)">PAUSED</h1>
+    <p class="sub">Take a breather — the turf will be right here when you're back.</p>
+    <div class="btn-row"><button class="btn wide" id="resumeBtn">▶&nbsp; Resume</button></div>
+    <div class="btn-row">
+      <button class="btn ghost" id="restartPauseBtn">↻&nbsp; Restart</button>
+      <button class="btn ghost" id="quitBtn">⌂&nbsp; Quit to Menu</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -238,34 +324,42 @@ resize();
 // One neutral source PNG, tinted to each team color on an offscreen canvas.
 // Falls back to the placeholder capsule if the image is missing.
 // ----------------------------------------------------------------------------
-// Character art: the "Painter" (128px), 8-direction aiming stills. We generate 5
-// facings (s, se, e, ne, n) and MIRROR se/e/ne to get sw/w/nw. Run motion is
-// code-driven (vertical bob) since these are stills. The character keeps its
-// natural colors for BOTH teams; ownership is shown by a team-colored ground
-// ring (drawTeamRing). Anchored per sprite by measured feet row / center / height.
-const FRAME_W = 128, FRAME_H = 128;
+// Character art: "Kai Splash" — a generated 8-direction run+shoot animation. Each
+// direction is a horizontal spritesheet of KAI_FRAMES frames (124px). We use all 8
+// REAL facings (no mirroring) so the blaster and ink markings stay on the correct
+// side. The character keeps its natural colors for BOTH teams; ownership is shown by
+// a team-colored ground ring (drawTeamRing). Anchored per direction by measured feet
+// row / content center / height. Idle holds frame 0 (aim pose); movement cycles the
+// frames at KAI_FPS (the frames carry their own run bounce).
+const KAI_FW = 124, KAI_FH = 124;   // animation frame size
+const KAI_FRAMES = 9;               // frames per direction
+const KAI_FPS = 14;                 // run-cycle playback speed (frames/sec)
 const HERO_TARGET_H = 54;      // desired on-screen character height (px)
 const FOOT_BELOW = 2;          // px below tile center where the feet rest
-const RUN_BOB_AMP = 4;         // px of vertical bounce while moving
-const RUN_BOB_FREQ = 16;       // bounce speed (rad/sec)
 
 const DIR_SRC = {
-  s:  "assets/painter.png",
-  se: "assets/painter-se.png",
-  e:  "assets/painter-e.png",
-  ne: "assets/painter-ne.png",
-  n:  "assets/painter-n.png",
+  s:  "assets/kai-run-s.png",
+  se: "assets/kai-run-se.png",
+  e:  "assets/kai-run-e.png",
+  ne: "assets/kai-run-ne.png",
+  n:  "assets/kai-run-n.png",
+  nw: "assets/kai-run-nw.png",
+  w:  "assets/kai-run-w.png",
+  sw: "assets/kai-run-sw.png",
 };
-// measured per sprite: content center x, feet row, content height (128px frames)
+// measured per direction: content center x, feet row, content height (124px frames)
 const DIR_META = {
-  s:  { cx: 64.5, foot: 120, h: 116 },
-  se: { cx: 67.0, foot: 119, h: 114 },
-  e:  { cx: 65.5, foot: 110, h: 101 },
-  ne: { cx: 64.0, foot: 115, h: 108 },
-  n:  { cx: 63.5, foot: 117, h: 110 },
+  s:  { cx: 61.5, foot: 94, h: 62 },
+  se: { cx: 60.0, foot: 93, h: 61 },
+  e:  { cx: 62.0, foot: 92, h: 60 },
+  ne: { cx: 58.5, foot: 93, h: 62 },
+  n:  { cx: 60.5, foot: 94, h: 64 },
+  nw: { cx: 65.5, foot: 93, h: 61 },
+  w:  { cx: 58.5, foot: 92, h: 60 },
+  sw: { cx: 59.5, foot: 93, h: 62 },
 };
 let heroReady = false;
-const dirImg = {};   // natural (untinted) directional sprites, shared by both teams
+const dirImg = {};   // natural (untinted) directional spritesheets, shared by both teams
 
 function tintSprite(img, color, amt) {
   const w = img.naturalWidth || img.width;
@@ -296,23 +390,15 @@ function tintSprite(img, color, amt) {
   });
 })();
 
-// Map a character's grid facing to one of 8 screen directions → {sprite key, flip}.
+// Map a character's grid facing to one of 8 screen-direction sprite keys (no mirror —
+// we have real art for all 8 sides, so the blaster stays in the correct hand).
 function facingDir(ch) {
   const sdx = (ch.fx - ch.fy) * (TILE_W / 2);   // grid facing → screen delta
   const sdy = (ch.fx + ch.fy) * (TILE_H / 2);
   let ang = Math.atan2(sdy, sdx) * 180 / Math.PI;
   if (ang < 0) ang += 360;
   const idx = Math.round(ang / 45) % 8;         // 0=E,1=SE,2=S,3=SW,4=W,5=NW,6=N,7=NE
-  return [
-    { k: "e",  flip: false }, // E
-    { k: "se", flip: false }, // SE
-    { k: "s",  flip: false }, // S (down)
-    { k: "se", flip: true  }, // SW
-    { k: "e",  flip: true  }, // W
-    { k: "ne", flip: true  }, // NW
-    { k: "n",  flip: false }, // N (up)
-    { k: "ne", flip: false }, // NE
-  ][idx];
+  return ["e", "se", "s", "sw", "w", "nw", "n", "ne"][idx];
 }
 
 // Greyscale splat decal — fully recolored to each team for the landing burst.
@@ -571,8 +657,8 @@ function paintAround(col, row, owner, radius) {
 }
 
 // Where the shot leaves the blaster: forward of the body, at gun height.
-const MUZZLE_FWD = 0.55;   // tiles ahead of the character (toward the aim)
-const MUZZLE_H = 30;       // launch height in px (upper-body / blaster level)
+const MUZZLE_FWD = 0.5;    // tiles ahead of the character (toward the aim)
+const MUZZLE_H = 24;       // launch height in px — measured to Kai's blaster muzzle
 
 function firePaint(ch) {
   if (ch.cooldown > 0) return;
@@ -992,31 +1078,28 @@ function drawCharacter(ch) {
   // team-colored ground ring (ownership cue) + shadow
   drawTeamRing(s, ch.owner);
 
-  // 8-direction facing from grid facing → sprite key + horizontal mirror.
+  // 8-direction facing → run+shoot spritesheet key (real art per side, no mirror).
   const dir = facingDir(ch);
   const moving = ch.walkTimer > 0;
-  // code-driven run bounce (these are stills); enemy phase-offset so they differ.
-  const bob = moving
-    ? Math.abs(Math.sin(gameClock * RUN_BOB_FREQ + (ch.owner === OWNER.ENEMY ? 1.6 : 0))) * RUN_BOB_AMP
+  // cycle the run frames while moving; hold the aim pose (frame 0) when idle.
+  // enemy is phase-offset so the two don't march in lockstep.
+  const phase = ch.owner === OWNER.ENEMY ? KAI_FRAMES / 2 : 0;
+  const frame = moving
+    ? Math.floor(gameClock * KAI_FPS + phase) % KAI_FRAMES
     : 0;
 
-  if (heroReady && dirImg[dir.k]) {
-    // ---- directional aiming sprite (natural colors; ring shows team) ----
-    const meta = DIR_META[dir.k];
-    const img = dirImg[dir.k];
+  if (heroReady && dirImg[dir]) {
+    // ---- directional run+shoot sprite (natural colors; ring shows team) ----
+    const meta = DIR_META[dir];
+    const img = dirImg[dir];
     const S = HERO_TARGET_H / meta.h;                 // normalize on-screen height
     const destX = s.x - meta.cx * S;
-    const destY = s.y + FOOT_BELOW - meta.foot * S - bob;   // feet anchored to tile
-    if (dir.flip) {
-      ctx.save();
-      ctx.translate(s.x, 0); ctx.scale(-1, 1); ctx.translate(-s.x, 0);
-      ctx.drawImage(img, destX, destY, FRAME_W * S, FRAME_H * S);
-      ctx.restore();
-    } else {
-      ctx.drawImage(img, destX, destY, FRAME_W * S, FRAME_H * S);
-    }
+    const destY = s.y + FOOT_BELOW - meta.foot * S;   // feet anchored to tile
+    ctx.drawImage(img, frame * KAI_FW, 0, KAI_FW, KAI_FH,
+                  destX, destY, KAI_FW * S, KAI_FH * S);
   } else {
     // ---- placeholder capsule fallback ----
+    const bob = moving ? Math.abs(Math.sin(gameClock * 16)) * 4 : 0;
     const bodyColor = ch.owner === OWNER.PLAYER ? COLORS.player : COLORS.enemy;
     const darkColor = ch.owner === OWNER.PLAYER ? COLORS.playerDark : COLORS.enemyDark;
     const h = 34, w = 22;
@@ -1395,6 +1478,10 @@ function endMatch() {
   const sub = document.getElementById("endSub");
   document.getElementById("endPlayer").textContent = scores.player;
   document.getElementById("endEnemy").textContent = scores.enemy;
+  // turf split bar — visualizes who claimed more floor
+  const total = Math.max(1, scores.player + scores.enemy);
+  document.getElementById("turfP").style.width = (scores.player / total * 100) + "%";
+  document.getElementById("turfE").style.width = (scores.enemy / total * 100) + "%";
   if (scores.player > scores.enemy) {
     title.textContent = "VICTORY"; title.className = "win";
     sub.textContent = "You painted the most floor. Nice control!";
@@ -1433,8 +1520,10 @@ function quitToMenu() {
 
 document.getElementById("startBtn").addEventListener("click", startMatch);
 document.getElementById("restartBtn").addEventListener("click", startMatch);
+document.getElementById("menuBtn").addEventListener("click", quitToMenu);
 pauseBtn.addEventListener("click", togglePause);
 document.getElementById("resumeBtn").addEventListener("click", togglePause);
+document.getElementById("restartPauseBtn").addEventListener("click", startMatch);
 document.getElementById("quitBtn").addEventListener("click", quitToMenu);
 
 // init draw of empty arena behind start screen
