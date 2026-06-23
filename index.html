@@ -338,6 +338,28 @@ let SPLAT_W = 32, SPLAT_H = 32;
   img.src = SPLAT_SRC;
 })();
 
+// Graffiti cover block — isometric concrete cube prop for obstacles/cover.
+// Drawn plain when neutral; tinted toward the owning team once painted.
+// Falls back to the code-drawn cube if the PNG is missing.
+const COVER_SRC = "assets/cover-block.png";
+const COVER_FRAME = 128;
+const COVER_CONTENT_W = 102;          // measured base-diamond width in the sprite
+const COVER_BASE_CX = 63.5, COVER_BASE_CY = 93.5;   // base-diamond center in the sprite
+const COVER_TINT = 0.5;               // team wash strength on painted blocks
+let coverReady = false;
+let coverImg = null, coverPlayer = null, coverEnemy = null;
+(() => {
+  const img = new Image();
+  img.onload = () => {
+    coverImg    = img;
+    coverPlayer = tintSprite(img, COLORS.player, COVER_TINT);
+    coverEnemy  = tintSprite(img, COLORS.enemy, COVER_TINT);
+    coverReady = true;
+  };
+  img.onerror = () => { coverReady = false; };  // keep code-drawn cube fallback
+  img.src = COVER_SRC;
+})();
+
 // ----------------------------------------------------------------------------
 // Audio (WebAudio, no files) — must be unlocked by a user gesture.
 // ----------------------------------------------------------------------------
@@ -891,6 +913,16 @@ const OBSTACLE_FACES = {
   [OWNER.ENEMY]:  { top: "#ffb866", left: "#e0853a", right: "#b3641b" },
 };
 function drawObstacle(cx, cy, owner) {
+  if (coverReady) {
+    // graffiti cube sprite — scale so its base diamond matches the tile, anchor
+    // the base-diamond center to (cx, cy) so the cube sits on the tile.
+    const S = TILE_W / COVER_CONTENT_W;
+    const img = owner === OWNER.PLAYER ? coverPlayer
+              : owner === OWNER.ENEMY  ? coverEnemy
+              : coverImg;
+    ctx.drawImage(img, cx - COVER_BASE_CX * S, cy - COVER_BASE_CY * S, COVER_FRAME * S, COVER_FRAME * S);
+    return;
+  }
   const hw = TILE_W / 2, hh = TILE_H / 2, H = OBSTACLE_H;
   const f = OBSTACLE_FACES[owner] || OBSTACLE_FACES[OWNER.NONE];
   // left side face

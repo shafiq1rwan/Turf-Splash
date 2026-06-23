@@ -90,8 +90,11 @@ resize / use touch for mobile).
   the arena never traps/bisects; kept clear of spawns — tune `OBSTACLE_COUNT_*`
   / `OBSTACLE_SPAWN_CLEAR`). Walls are **paintable cover** (Splatoon-style): they
   block movement (`isBlocked` + per-axis slide in `moveCharacter`) and stop shots,
-  but a shot that hits one **paints it** and it counts as turf. Drawn as code-built
-  iso cubes (`drawObstacle`) tinted to the owning team, depth-sorted with chars.
+  but a shot that hits one **paints it** and it counts as turf. Drawn as the
+  generated **graffiti cover-block sprite** (`assets/cover-block.png`, base-aligned
+  to the tile in `drawObstacle`) — plain when neutral, washed toward the owning
+  team's color once painted; falls back to a code-built iso cube if the PNG is
+  missing. Depth-sorted with chars.
 - **Core systems:** `moveCharacter` (8-dir, enemy-paint slow, obstacle slide),
   `firePaint` (ink-gated arcing projectile), `paintAround`, `rechargeInk`,
   `updateEnemyAI` (dumb wander + retreat-to-recharge), `updateProjectiles`
