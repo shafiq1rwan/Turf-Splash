@@ -570,6 +570,10 @@ function paintAround(col, row, owner, radius) {
   }
 }
 
+// Where the shot leaves the blaster: forward of the body, at gun height.
+const MUZZLE_FWD = 0.55;   // tiles ahead of the character (toward the aim)
+const MUZZLE_H = 30;       // launch height in px (upper-body / blaster level)
+
 function firePaint(ch) {
   if (ch.cooldown > 0) return;
   if (ch.ink < STATS.inkPerShot) return;   // out of ink — go recharge on your paint
@@ -577,10 +581,12 @@ function firePaint(ch) {
   ch.ink -= STATS.inkPerShot;
   projectiles.push({
     owner: ch.owner,
-    col: ch.col, row: ch.row,
+    col: ch.col + ch.fx * MUZZLE_FWD,    // spawn at the muzzle, not the feet
+    row: ch.row + ch.fy * MUZZLE_FWD,
     vx: ch.fx, vy: ch.fy,
     traveled: 0,
     range: STATS.paintRange,
+    muzzleH: MUZZLE_H,
   });
   if (ch.owner === OWNER.PLAYER) playShoot();
 }
@@ -810,11 +816,11 @@ function updateSplats(dt) {
   }
 }
 
-// Parabolic flight height (in px) for a projectile, peaks mid-flight.
+// Flight height (px): starts at the muzzle, arcs, lands on the floor at t=1.
 function projectileHeight(p) {
   const t = Math.min(p.traveled / p.range, 1);
-  const peak = 34 + p.range * 4; // taller arc for longer shots
-  return Math.sin(t * Math.PI) * peak;
+  const peak = 16 + p.range * 3;                 // arc added on top of muzzle height
+  return (p.muzzleH || 0) * (1 - t) + Math.sin(t * Math.PI) * peak;
 }
 
 function countTiles() {
@@ -1047,6 +1053,18 @@ function drawProjectile(p) {
   ctx.beginPath();
   ctx.arc(s.x, s.y - h, 6, 0, Math.PI * 2);
   ctx.fill();
+  // muzzle flash: a quick bright burst right after leaving the blaster
+  if (p.traveled < 0.4) {
+    const f = 1 - p.traveled / 0.4;
+    ctx.save();
+    ctx.globalAlpha = f * 0.9;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(s.x, s.y - h, 4 + f * 6, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = f * 0.5;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(s.x, s.y - h, 7 + f * 8, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
 }
 
 function drawSplat(sp) {
