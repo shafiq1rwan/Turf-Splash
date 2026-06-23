@@ -238,21 +238,29 @@ resize();
 // One neutral source PNG, tinted to each team color on an offscreen canvas.
 // Falls back to the placeholder capsule if the image is missing.
 // ----------------------------------------------------------------------------
-const HERO_SRC = "assets/iso-hero.png";
+// Character art: the "Painter" (128px). Static still for idle/standing; a
+// run-and-shoot spritesheet plays while moving. One neutral sprite, tinted per
+// team. Both share a single foot-anchor (measured from the 128px PNGs).
+const HERO_SRC = "assets/painter.png";          // static still (idle / standing)
+const ANIM_SRC = "assets/painter-run.png";      // run + shoot sheet (moving)
 const TEAM_TINT = 0.42;        // how strongly to push the sprite toward team color
 
-// Sprite placement. The art sits inside its frame with padding, so we anchor by
-// the measured feet row instead of the frame edge (keeps characters ON the tile,
-// not floating). Metrics below are measured from the actual PNGs.
-const HERO_TARGET_H = 46;      // desired on-screen character height (px)
+// Sprite placement (128px frames). Anchor by the measured feet row so the
+// character stands ON the tile. Still: content y[5..120], cx ~64. Run sheet:
+// cx ~64, planted foot ~row 120. Shared constants below.
+const HERO_TARGET_H = 54;      // desired on-screen character height (px)
 const FOOT_BELOW = 2;          // px below tile center where the feet rest
-// still sprite (iso-hero.png): content y[3..56], center x ~31.5, height ~54
-const STILL_FOOT_Y = 56, STILL_CX = 31.5, STILL_H = 54;
-// animation frames (idle/walk sheets): content y[12..48], center x ~32, height ~37
-const ANIM_FOOT_Y = 48, ANIM_CX = 32, ANIM_H = 37;
+const SPR_CONTENT_H = 116;     // character content height in the 128px frame
+const SPR_CX = 64;             // content center x in the frame
+const SPR_FOOT_Y = 120;        // feet row in the frame
 let heroReady = false;
 let heroPlayer = null, heroEnemy = null;
-let HERO_W = 64, HERO_H = 64;
+let HERO_W = 128, HERO_H = 128;
+
+const ANIM_COLS = 6, ANIM_FRAMES = 32, ANIM_FPS = 8;
+const FRAME_W = 128, FRAME_H = 128;
+let animReady = false;
+let animPlayer = null, animEnemy = null;
 
 function tintSprite(img, color, amt) {
   const w = img.naturalWidth || img.width;
@@ -272,8 +280,8 @@ function tintSprite(img, color, amt) {
 (() => {
   const img = new Image();
   img.onload = () => {
-    HERO_W = img.naturalWidth || 64;
-    HERO_H = img.naturalHeight || 64;
+    HERO_W = img.naturalWidth || 128;
+    HERO_H = img.naturalHeight || 128;
     heroPlayer = tintSprite(img, COLORS.player, TEAM_TINT);
     heroEnemy  = tintSprite(img, COLORS.enemy, TEAM_TINT);
     heroReady = true;
@@ -283,13 +291,6 @@ function tintSprite(img, color, amt) {
   img.src = HERO_SRC;
 })();
 
-// Idle animation spritesheet (6x6 grid, 32 frames @ 8fps, 64px frames).
-// Tinted per team like the still sprite; falls back to the static hero/capsule.
-const ANIM_SRC = "assets/iso-hero-idle.png";
-const ANIM_COLS = 6, ANIM_FRAMES = 32, ANIM_FPS = 8;
-const FRAME_W = 64, FRAME_H = 64;
-let animReady = false;
-let animPlayer = null, animEnemy = null;
 (() => {
   const img = new Image();
   img.onload = () => {
@@ -300,21 +301,6 @@ let animPlayer = null, animEnemy = null;
   };
   img.onerror = () => { animReady = false; };  // fall back to static sprite
   img.src = ANIM_SRC;
-})();
-
-// Walk-cycle spritesheet (same layout/metrics as idle). Played while moving.
-const WALK_SRC = "assets/iso-hero-walk.png";
-let walkReady = false;
-let walkPlayer = null, walkEnemy = null;
-(() => {
-  const img = new Image();
-  img.onload = () => {
-    walkPlayer = tintSprite(img, COLORS.player, TEAM_TINT);
-    walkEnemy  = tintSprite(img, COLORS.enemy, TEAM_TINT);
-    walkReady = true;
-  };
-  img.onerror = () => { walkReady = false; };  // fall back to idle
-  img.src = WALK_SRC;
 })();
 
 // Greyscale splat decal — fully recolored to each team for the landing burst.
@@ -984,29 +970,24 @@ function drawCharacter(ch) {
   ctx.save();
   if (ch.faceLeft) { ctx.translate(s.x, 0); ctx.scale(-1, 1); ctx.translate(-s.x, 0); }
 
-  if (animReady) {
-    // ---- animated spritesheet, tinted to the team color ----
-    // walk cycle while moving, idle otherwise (same frame layout + foot anchor)
-    const moving = walkReady && ch.walkTimer > 0;
-    const sheet = moving
-      ? (ch.owner === OWNER.PLAYER ? walkPlayer : walkEnemy)
-      : (ch.owner === OWNER.PLAYER ? animPlayer : animEnemy);
-    // offset the enemy's phase so the two don't bob in lockstep
+  const S = HERO_TARGET_H / SPR_CONTENT_H;            // shared scale (still + run)
+  const destX = s.x - SPR_CX * S;
+  const destY = s.y + FOOT_BELOW - SPR_FOOT_Y * S;    // feet anchored to the tile
+  const moving = ch.walkTimer > 0;
+
+  if (moving && animReady) {
+    // ---- run + shoot spritesheet, tinted to the team color ----
+    const sheet = ch.owner === OWNER.PLAYER ? animPlayer : animEnemy;
+    // offset the enemy's phase so the two don't run in lockstep
     const phase = ch.owner === OWNER.ENEMY ? ANIM_FRAMES / 2 : 0;
     const fi = (Math.floor(gameClock * ANIM_FPS + phase)) % ANIM_FRAMES;
     const sx = (fi % ANIM_COLS) * FRAME_W;
     const sy = Math.floor(fi / ANIM_COLS) * FRAME_H;
-    const S = HERO_TARGET_H / ANIM_H;                 // scale so feet land on the tile
-    const destX = s.x - ANIM_CX * S;
-    const destY = s.y + FOOT_BELOW - ANIM_FOOT_Y * S;
     ctx.drawImage(sheet, sx, sy, FRAME_W, FRAME_H, destX, destY, FRAME_W * S, FRAME_H * S);
     topY = destY;
   } else if (heroReady) {
-    // ---- static generated sprite, tinted to the team color ----
+    // ---- static still (standing), tinted to the team color ----
     const img = ch.owner === OWNER.PLAYER ? heroPlayer : heroEnemy;
-    const S = HERO_TARGET_H / STILL_H;
-    const destX = s.x - STILL_CX * S;
-    const destY = s.y + FOOT_BELOW - STILL_FOOT_Y * S;
     ctx.drawImage(img, destX, destY, HERO_W * S, HERO_H * S);
     topY = destY;
   } else {
